@@ -19,3 +19,5 @@ printMarkdown :: MarkdownDoc -> String
 -- module BX
 markdownBX :: BiGUL MarkdownDoc AbsDocument
 ```
+
+Please see the `BiPandoc-Proposal.markdown` for more information.
