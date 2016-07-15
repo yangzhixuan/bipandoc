@@ -1,14 +1,15 @@
 {-# Language TemplateHaskell, TypeFamilies #-}
-module BX where
+module BX.MarkdownBX where
 
 import Generics.BiGUL
 import Data.List
 import Generics.BiGUL.Interpreter
 import Generics.BiGUL.TH
 
-import BXHelpers
+import BX.BXHelpers
+
 import Abstract
-import Markdown
+import Parser.Markdown
 
 markdownBX :: BiGUL MarkdownDoc AbsDocument
 markdownBX = $(update [p| MarkdownDoc x |] [p| AbsDocument x |]

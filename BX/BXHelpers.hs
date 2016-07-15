@@ -1,5 +1,5 @@
 {-# Language TemplateHaskell, TypeFamilies #-}
-module BXHelpers where
+module BX.BXHelpers where
 
 import Generics.BiGUL
 import Data.List

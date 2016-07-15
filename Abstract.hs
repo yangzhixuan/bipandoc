@@ -19,6 +19,7 @@ data AbsUnorderedListItem = AbsUnorderedListItem AbsInline
 
 data AbsInline = AbsStr String
                | AbsSoftbreak
+               | AbsHardbreak
                | AbsEmph [AbsInline]
     deriving (Show, Eq)
 
