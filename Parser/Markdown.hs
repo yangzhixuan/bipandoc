@@ -23,7 +23,7 @@ data MarkdownDoc = MarkdownDoc [Block]
 
 data Block = Para String [Inline] -- indent, inlines
            | ATXHeading String String String [Inline] String -- indent, atxs, spaces, heading, newline
-           | SetextHeading String [Inline] String String String -- indent, heading, newline, underline, spaces
+           | SetextHeading String [Inline] String String String String -- indent, heading, newline, ind, underline, spaces
            | UnorderedList [ListItem]
            | OrderedList [ListItem]
            | BlockQuote String [Block] -- indent, blocks
@@ -72,7 +72,7 @@ printBlock :: Block -> String
 printBlock (BlankLine ind s) = ind ++ s
 printBlock (Para ind inls) = ind ++ (concatMap printInline inls) ++ "\n"
 printBlock (ATXHeading ind atxs sps heading sps2) = ind ++ atxs ++ sps ++ (concatMap printInline heading) ++ sps2
-printBlock (SetextHeading ind heading sps2 unls sps) = ind ++ (concatMap printInline heading) ++ sps2 ++ unls ++ sps
+printBlock (SetextHeading ind heading sps2 ind2 unls sps) = ind ++ (concatMap printInline heading) ++ sps2 ++ ind2 ++ unls ++ sps
 printBlock (UnorderedList items) = concatMap printListItem items
 printBlock (OrderedList items) = concatMap printListItem items
 printBlock (BlockQuote ind blocks) = ind ++ (concatMap printBlock blocks)
@@ -80,14 +80,15 @@ printBlock (IndentedCode codes) = concatMap printCodeLine codes
 
 printInline :: Inline -> String
 printInline (Str s) = s
+printInline (Softbreak ind) = "\n" ++ ind
 printInline (Hardbreak s ind) = s ++ "\n" ++ ind
 printInline (Spaces s) = s
-printInline (Softbreak ind) = "\n" ++ ind
 printInline (Emph inlines) = "*" ++ (concatMap printInline inlines) ++ "*"
 printInline (Strong inlines) = "**" ++ (concatMap printInline inlines) ++ "**"
 printInline (EscapedCharInline c) = "\\" ++ [c]
 printInline (InlineCode delim codes) = delim ++ codes ++ delim
 printInline (Link inlines dest) = "[" ++ (concatMap printInline inlines) ++ "]" ++ "(" ++ dest ++ ")"
+printInline (Image alt dest) = "![" ++ alt ++ "]" ++ "(" ++ dest ++ ")"
 
 printListItem :: ListItem -> String
 printListItem (UnorderedListItem ind sps bullet sps2 items) = ind ++ sps ++ [bullet] ++ sps2 ++ (concatMap printBlock items) 
@@ -200,11 +201,11 @@ setextHeading = try $ do
     heading <- many1 ((notFollowedBy (spaceChars >> newline)) >> inline)
     sps2 <- spaceChars
     newline
-    indentation
+    ind2 <- indentation
     chs <- many1 (oneOf setextHChars)
     sp <- spaceChars
     newline
-    return $ SetextHeading ind heading (sps2 ++ "\n") chs (sp ++ "\n")
+    return $ SetextHeading ind heading (sps2 ++ "\n") ind2 chs (sp ++ "\n")
 
 -- | Parses a blockquote
 
@@ -372,10 +373,12 @@ escapedCharInline = try $ do
     ch <- escapedChar
     return $ EscapedCharInline ch
 
+punctuation = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+
 escapedCharSlash :: Parsec String ParserStatus String
 escapedCharSlash = try $ do
     char '\\'
-    ch <- oneOf "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+    ch <- oneOf punctuation
     return $ "\\" ++ [ch]
 
 escapedChar :: Parsec String ParserStatus Char
