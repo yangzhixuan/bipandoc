@@ -12,11 +12,11 @@ Prelude> :l TestBX.hs
 The interface:
 
 ```haskell
--- module Markdown
+-- module Parser.Markdown
 parseMarkdown :: String -> MarkdownDoc
 printMarkdown :: MarkdownDoc -> String
 
--- module BX
+-- module BX.MarkdownBX
 markdownBX :: BiGUL MarkdownDoc AbsDocument
 ```
 
