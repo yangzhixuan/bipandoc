@@ -18,31 +18,109 @@ import Text.Megaparsec
 import Data.Char (isSpace)
 import Control.Monad (liftM, replicateM)
 import qualified Data.List.NonEmpty as DLN ( NonEmpty((:|)) )
+import Data.Map as Map (fromList, Map, lookup, union, singleton)
+
 
 import Debug.Trace
 
-data GTree a = GTree a [GTree a] deriving (Eq, Ord)
+data GTree a = GTree a [GTree a] deriving (Eq)
 
-data Document = Document Spaces DocType Spaces HTML Spaces deriving (Eq, Ord)
+data Document = Document Spaces DocType Spaces HTML Spaces deriving (Eq)
 type Spaces = String
 type DocType = String
-type HTML = GTree Tag
+type HTML = GTree CTag
 
 type PU = Parsec Dec String
 
 -- | A single HTML element.
 --   There is no requirement for 'TagOpen' and 'TagClose' to match.
-data Tag =
-     Tag     TagName [Either Spaces Attribute] String  -- TagName [Spaces | Attributes] CloseTag|SelfClose
-   | TagVoid TagName [Either Spaces Attribute]         -- void tag without (self-) closing tag. eg: <br> <meta ...>
-   | TagText String                  -- ^ A text node, guaranteed not to be the empty string
-   | TagScript String                -- ^ A script node
-   | TagComment String               -- ^ A comment
-     deriving (Show, Eq, Ord)
+
+data CTag =
+    CTag     CTagName [Either Spaces Attribute] String  -- TagName [Spaces | Attributes] CloseTag|SelfClose
+  | CTagVoid CTagName [Either Spaces Attribute]         -- void tag without (self-) closing tag. eg: <br> <meta ...>
+  | CTagText    String                  -- ^ A text node, guaranteed not to be the empty string
+  | CTagScript  String                -- ^ A script node
+  | CTagComment String               -- ^ A comment
+  deriving (Show, Eq)
+
+type CTagName = Either SupportedName OtherName
+type OtherName = String
 
 type Attribute = (String, String, String) -- ("src", "   =  ", "\'heheSoManySpaces\'")
 type TagName = String
 type PreText = String
+
+data SupportedName =
+    CDiv            -- <div>
+  | CPara           -- <p>
+  | CCode           -- <code>
+  | CPre            -- <pre>
+  | CBlockQuote     -- <blockquote>
+  | COrderedList | CUnorderedList | CDefinitionList    -- <ol>, <ul>, <dl>
+  | CHeader1 | CHeader2 | CHeader3 | CHeader4 | CHeader5 | CHeader6 -- <h1>, <h2> ...
+  | CHorizontalRule -- <hr>
+  | CTable | CTableRow | CTableCell | CTableHeader     -- <table>, <tr>, <td>, <th>
+  | CEmph  | CStrong | CStrike          -- <em>, <strong>, <strike>
+  | CSuperscript | CSubscript    -- <sup>, <sub>
+  | CQuoted         -- <q>
+  | CCite           -- <cite>
+  | CLink         -- <link>
+  | CImg          -- <img>
+  deriving (Eq, Enum)
+
+  -- | Space        -- do not know what it is. maybe &npsp
+  -- | SmallCaps    -- no this
+  -- | CEmDash       -- &mdash
+  -- | CEnDash       -- &ndash
+  -- | CImg
+  -- | endnote, footnote... -- no these
+
+instance Show SupportedName where
+  show CDiv = "div"
+  show CPara = "p"
+  show CCode = "code"
+  show CPre  = "pre"
+  show CBlockQuote = "blockquote"
+  show COrderedList    = "ol"
+  show CUnorderedList  = "ul"
+  show CDefinitionList = "dl"
+  show CHeader1 = "h1"
+  show CHeader2 = "h2"
+  show CHeader3 = "h3"
+  show CHeader4 = "h4"
+  show CHeader5 = "h5"
+  show CHeader6 = "h6"
+  show CHorizontalRule = "hr"
+  show CTable       = "table"
+  show CTableRow    = "tr"
+  show CTableCell   = "td"
+  show CTableHeader = "th"
+  show CEmph        = "em"
+  show CStrong      = "strong"
+  show CStrike      = "strike"
+  show CSuperscript = "sup"
+  show CSubscript   = "sub"
+  show CQuoted  = "q"
+  show CCite    = "cite"
+  show CLink    = "link"
+  show CImg     = "img"
+
+supportedName :: Map String SupportedName
+supportedName = fromList [
+   ("div", CDiv)
+  ,("p", CPara)
+  ,("code", CCode)
+  ,("pre", CPre)
+  ,("blockquote", CBlockQuote)
+  ,("ol", COrderedList), ("ul", CUnorderedList), ("dl", CDefinitionList)
+  ,("h1", CHeader1), ("h2", CHeader2), ("h3", CHeader3), ("h4", CHeader4), ("h5", CHeader5), ("h6", CHeader6)
+  ,("hr", CHorizontalRule), ("table", CTable), ("tr", CTableRow), ("td", CTableCell), ("th", CTableHeader)
+  ,("em", CEmph), ("strong", CStrong), ("strike", CStrike)
+  ,("sup", CSuperscript), ("sub", CSubscript)
+  ,("q", CQuoted)
+  ,("cite", CCite)
+  ,("link", CLink)
+  ,("img", CImg)]
 
 parseDoc :: Parsec Dec String Document
 parseDoc = do
@@ -60,10 +138,10 @@ anyNode = try pScriptTag <|>  try pTagElement <|> try pTagComment <|> pTagText <
 
 pHTML :: PU HTML
 pHTML = do
-  (Tag tn sOrA _) <- pTagOpen
+  (CTag tn sOrA _) <- pTagOpen
   inner <- many anyNode
   tc    <- endHTML
-  return $ GTree (Tag tn sOrA tc) inner
+  return $ GTree (CTag tn sOrA tc) inner
   <?> "pHTML"
 
 endHTML :: PU String
@@ -73,27 +151,27 @@ endHTML = (string "</html>") >> return "html"
 pTagElement :: PU HTML
 pTagElement = do
   posO <-getPosition
-  (Tag tn sOrA maybeSelfClose) <- try pTagSelfClose <|> pTagOpen
+  (CTag tn sOrA maybeSelfClose) <- try pTagSelfClose <|> pTagOpen
   case maybeSelfClose of
-    "/>" -> return $ GTree (Tag tn sOrA maybeSelfClose) []
+    "/>" -> return $ GTree (CTag tn sOrA maybeSelfClose) []
     ""   ->
-      if isVoidElement tn
+      if isVoidElement (prtCTagName tn)
         then do
-          iivt <- isIllVoidTag tn  -- this is a test function and will not consume input
+          iivt <- isIllVoidTag (prtCTagName tn)  -- this is a test function and will not consume input
           if iivt
             then do
               inner <- many (try cmtOrTxt) -- maybe some text or comment node...fml
               tc    <- try pTagClose
-              return $ GTree (Tag tn sOrA tc) inner   -- though it's a void element, programmers do not obey the rule and put the ending tag.
-            else return $ GTree (TagVoid tn sOrA) []  -- this is the most expected tag format for void element.
+              return $ GTree (CTag tn sOrA tc) inner   -- though it's a void element, programmers do not obey the rule and put the ending tag.
+            else return $ GTree (CTagVoid tn sOrA) []  -- this is the most expected tag format for void element.
 
         else do
           inner <- many (try anyNode)
           posC  <- getPosition
           tc    <- pTagClose
-          if tn == tc
-            then return $ GTree (Tag tn sOrA tc) inner
-            else error $ "opening and closing tag mismatch. Opening: " ++ wrapTagO tn ++ " at " ++ showErrPos posO
+          if (prtCTagName tn) == tc
+            then return $ GTree (CTag tn sOrA tc) inner
+            else error $ "opening and closing tag mismatch. Opening: " ++ wrapTagO (prtCTagName tn) ++ " at " ++ showErrPos posO
                           ++ "\tClosing: " ++ wrapTagC tc ++ " at " ++ showErrPos posC
   <?> "pTagElement"
 
@@ -109,24 +187,28 @@ isIllVoidTag tn = lookAhead (do
 cmtOrTxt :: PU HTML
 cmtOrTxt = try pTagComment <|> pTagText
 
-pTagSelfClose :: PU Tag
+pTagSelfClose :: PU CTag
 pTagSelfClose = do
   lab  <- char '<'
   tn   <- pTagName
   sOrA <- many spacesOrAttr
   rab  <- string "/>"
-  return $ Tag tn (mergeSpaces sOrA) "/>"
+  case Map.lookup tn supportedName of
+    Nothing  -> return $ CTag (Right tn) (mergeSpaces sOrA) "/>"
+    Just tn' -> return $ CTag (Left tn') (mergeSpaces sOrA) "/>"
   <?> "pTagSelfClose"
 
 
 -- TagOpen preSpaces TagName [Either Spaces Attribute]
-pTagOpen :: PU Tag
+pTagOpen :: PU CTag
 pTagOpen = do
   lab  <- char '<'
   tn   <- pTagName
   sOrA <- many spacesOrAttr
   rab  <- char '>'
-  return $ Tag tn (mergeSpaces sOrA) ""
+  case Map.lookup tn supportedName of
+    Nothing  -> return $ CTag (Right tn) (mergeSpaces sOrA) ""
+    Just tn' -> return $ CTag (Left tn') (mergeSpaces sOrA) ""
   <?> "pTagOpen"
 
 pTagClose :: PU String
@@ -142,7 +224,7 @@ pTagText = do
     '<' -> unexpected (Label ((DLN.:|) '<' []) )
     _   -> do
           text <- someTill anyChar (lookAhead (string "<"))
-          return $ GTree (TagText text) []
+          return $ GTree (CTagText text) []
   <?> "pTagText"
 
 pTagComment :: PU HTML
@@ -150,8 +232,8 @@ pTagComment = do
   string "<!--"
   s <- lookAhead (replicateM 3 anyChar)
   case s of
-    "-->" -> string "-->" >> (return $ GTree (TagComment "") [])
-    _     -> someTill anyChar (string "-->") >>= \cmt -> return $ GTree (TagComment cmt) []
+    "-->" -> string "-->" >> (return $ GTree (CTagComment "") [])
+    _     -> someTill anyChar (string "-->") >>= \cmt -> return $ GTree (CTagComment cmt) []
 
 pDocType :: PU DocType
 pDocType = do
@@ -196,13 +278,13 @@ pAttribute = do
 
 pScriptTag :: PU HTML
 pScriptTag = do
-  Tag tn sOrA maybeSelfClose <- pTagOpen
-  if tn == "script"
+  CTag tn sOrA maybeSelfClose <- pTagOpen
+  if (prtCTagName tn) == "script"
   then  if maybeSelfClose == "/>"
-        then return $ GTree (TagScript $ "<" ++ tn ++ flatSorAs sOrA  ++ "/>") []
+        then return $ GTree (CTagScript $ "<" ++ (prtCTagName tn) ++ flatSorAs sOrA  ++ "/>") []
         else do
           txt <- manyTill anyChar (string "</script>")
-          let gt = GTree (TagScript $ wrapTagO (tn ++ flatSorAs sOrA) ++ txt ++ "</script>") []
+          let gt = GTree (CTagScript $ wrapTagO ((prtCTagName tn) ++ flatSorAs sOrA) ++ txt ++ "</script>") []
           --traceM:r (show gt)
           return gt
   else unexpected (Label ((DLN.:|) 's' []) )
@@ -232,21 +314,26 @@ wrapTagC tag = "</" ++ tag ++ ">"
 instance Show Document where
   show (Document pre doctype mid html tra) = pre ++ doctype ++ mid ++ show html ++ tra
 
-instance Show (GTree Tag) where
-  show (GTree (Tag tn sOrAs "/>") [])     = "<" ++ tn ++ flatSorAs sOrAs ++ "/>"
-  show (GTree (Tag tn sOrAs tc) children) = wrapTagO (tn ++ flatSorAs sOrAs) ++ concatMap show children ++ wrapTagC tc
-  show (GTree (TagText txt) []) = txt
-  show (GTree (TagComment cmt) []) = "<!--" ++ cmt ++ "-->"
-  show (GTree (TagScript txt) []) = txt
-  show (GTree (TagVoid tn sOrA) []) = wrapTagO (tn ++ flatSorAs sOrA)
+instance Show (GTree CTag) where
+  show (GTree (CTag tn sOrAs "/>") [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ "/>"
+  show (GTree (CTag tn sOrAs tc) children) = wrapTagO (prtCTagName tn ++ flatSorAs sOrAs) ++ concatMap show children ++ wrapTagC tc
+  show (GTree (CTagText txt) []) = txt
+  show (GTree (CTagComment cmt) []) = "<!--" ++ cmt ++ "-->"
+  show (GTree (CTagScript txt) []) = txt
+  show (GTree (CTagVoid tn sOrA) []) = wrapTagO (prtCTagName tn ++ flatSorAs sOrA)
 
 
 flatSorAs :: [Either Spaces Attribute] -> String
 flatSorAs [] = ""
 flatSorAs (Left sps : xs) = sps ++ flatSorAs xs
 flatSorAs (Right (name, eq, val) : xs) = name ++ eq ++ val ++ flatSorAs xs
---------------------
 
+prtCTagName :: Either SupportedName OtherName -> String
+prtCTagName (Left sptdname) = show sptdname
+prtCTagName (Right othername) = othername
+
+
+--------------------
 alwaysSucceed :: PU Char
 alwaysSucceed = lookAhead anyChar
 
@@ -260,101 +347,15 @@ isVoidElement = flip elem ["area", "base", "br", "col", "command", "embed", "hr"
 
 
 
------------------------
--- transformation for refining CST datatypes
-
---data CHTML = CHTML CHead CBody deriving (Eq, Ord, Read)
-
---type CHead = String -- assume head will not be showed or edited in other document format
---data CBody = CBody CBodyTag [CBlock] deriving (Eq, Ord)
+------------------------
+-- AST datatypes. script node, comment node, and XXX should be included in AST.
+--data AHTML = AHTML AHead ABody deriving (Eq, Ord, Read)
+--type AHead = String -- assume head will not be showed or edited in other document format
+--data ABody = ABody ABodyTag [ABlock] deriving (Eq, Ord)
 
 
---data CTag =
---     CTag  CTagName [Either Spaces Attribute] String  -- TagName [Spaces | Attributes] CloseTag|SelfClose
---   | CTagVoid TagName [Either Spaces Attribute]         -- void tag without (self-) closing tag. eg: <br> <meta ...>
---   | CTagText String                  -- ^ A text node, guaranteed not to be the empty string
---   | CTagScript String                -- ^ A script node
---   | CTagComment String               -- ^ A comment
---   | CTagBlock CBlock
---     deriving (Show, Eq, Ord)
 
-
-data CTagName =
-    CDiv   -- <div>
-  | CPara  -- <p>
-  | CCode  -- <code>
-  | CPre   -- <pre>
-  | CBlockQuote -- <blockquote>
-  | COrderedList    -- <ol>
-  | CUnorderedList  -- <ul>
-  | CDefinitionList -- <dl>
-  | CHeader1        -- <h1>
-  | CHeader2
-  | CHeader3
-  | CHeader4
-  | CHeader5
-  | CHeader6
-  | CHorizontalRule -- <hr>
-  | CTable          -- <table>
-  | CTableRow       -- <tr>
-  | CTableCell      -- <td>
-  | CTableHeader    -- <th>
-  deriving (Eq, Enum)
-
--- | Block element.
---data CBlock
---    = CPlain [CInline]        -- ^ Plain text, not a paragraph
---    | CPara  [CInline]         -- ^ Paragraph
---    | CodeBlock Attr String -- ^ Code block (literal) with attributes
---    | RawBlock Format String -- ^ Raw block
---    | BlockQuote [Block]    -- ^ Block quote (list of blocks)
---    | OrderedList ListAttributes [[Block]] -- ^ Ordered list (attributes
---                            -- and a list of items, each a list of blocks)
---    | BulletList [[Block]]  -- ^ Bullet list (list of items, each
---                            -- a list of blocks)
---    | DefinitionList [([Inline],[[Block]])]  -- ^ Definition list
---                            -- Each list item is a pair consisting of a
---                            -- term (a list of inlines) and one or more
---                            -- definitions (each a list of blocks)
---    | Header Int Attr [Inline] -- ^ Header - level (integer) and text (inlines)
---    | HorizontalRule        -- ^ Horizontal rule
---    | Table [Inline] [Alignment] [Double] [TableCell] [[TableCell]]  -- ^ Table,
---                            -- with caption, column alignments (required),
---                            -- relative column widths (0 = default),
---                            -- column headers (each a list of blocks), and
---                            -- rows (each a list of lists of blocks)
---    | Div Attr [Block]      -- ^ Generic block container with attributes
---    | Null                  -- ^ Nothing
---    deriving (Eq, Ord, Read, Show, Typeable, Data, Generic)
-
-
---data Inline
---    = Str String            -- ^ Text (string)
---    | Emph [Inline]         -- ^ Emphasized text (list of inlines)
---    | Strong [Inline]       -- ^ Strongly emphasized text (list of inlines)
---    | Strikeout [Inline]    -- ^ Strikeout text (list of inlines)
---    | Superscript [Inline]  -- ^ Superscripted text (list of inlines)
---    | Subscript [Inline]    -- ^ Subscripted text (list of inlines)
---    | SmallCaps [Inline]    -- ^ Small caps text (list of inlines)
---    | Quoted QuoteType [Inline] -- ^ Quoted text (list of inlines)
---    | Cite [Citation]  [Inline] -- ^ Citation (list of inlines)
---    | Code String           -- ^ Inline code (literal)
---    | Space                 -- ^ Inter-word space
---    | EmDash                -- ^ Em dash
---    | EnDash                -- ^ En dash
---    | Apostrophe            -- ^ Apostrophe
---    | Ellipses              -- ^ Ellipses
---    | LineBreak             -- ^ Hard line break
---    | Math MathType String  -- ^ TeX math (literal)
---    | TeX String            -- ^ LaTeX code (literal)
---    | HtmlInline String     -- ^ HTML code (literal)
---    | Link [Inline] Target  -- ^ Hyperlink: text (list of inlines), target
---    | Image [Inline] Target -- ^ Image:  alt text (list of inlines), target
---                            -- and target
---    | Note [Block]          -- ^ Footnote or endnote
---    deriving (Show, Eq, Ord, Read, Typeable, Data)
-
-
+------------------------
 t1 :: IO ()
 t1 = readFile "1.html" >>= parseTest parseDoc
 
