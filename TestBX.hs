@@ -9,12 +9,13 @@ import Data.Eq
 
 import Generics.BiGUL
 import Data.List
+import Data.Maybe
 import Generics.BiGUL.Interpreter
 import Generics.BiGUL.TH
 
 import Abstract
-import Markdown
-import BX
+import Parser.Markdown
+import BX.MarkdownBX
 
 putStrInGreen :: String -> IO ()
 putStrInGreen s = do
@@ -22,24 +23,25 @@ putStrInGreen s = do
     putStr s
     setSGR [Reset]
 
-test filename = do
+testBX filename = do
     f <- readFile filename
     let md = parseMarkdown  f
     putStrInGreen "Parsed markdown: \n"
-    print md
+    putPretty md
     let view = get markdownBX md
     putStrLn ""
     --
     putStrInGreen "Got view: \n"
-    print view
+    putPretty view
     putStrLn ""
     --
     let src' = (view >>= \v -> put markdownBX md v)
     putStrInGreen "Put back source:\n"
-    print src'
-    putStrInGreen "Equal to orignal source? "
+    putPretty src'
+    putStrLn ""
+    putStrInGreen "Equal to the original source? "
     setSGR [SetColor Foreground Vivid Red]
-    print (src' >>= \s -> return (s == md))
+    print (fromMaybe False (src' >>= \s -> return (s == md)))
     setSGR [Reset]
     putStrLn ""
     --
@@ -48,6 +50,6 @@ test filename = do
     let f' = fmap printMarkdown src'
     if (Just f == f')
        then putStrLn "True"
-       else do putStrLn "False"; putStrLn (f ++ "\nvs.\n" ++ (show f'))
+       else do putStrLn "False"; putStrLn (f ++ "\nvs.\n\n" ++ (fromMaybe "" f'))
     putStrLn ""
     setSGR [Reset]
