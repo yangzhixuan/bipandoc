@@ -23,7 +23,7 @@ blockListBX = (filterLens nonBlankLines) `Compose` (mapLens blockBX createBlock)
           createBlock = const $ Para "" []
 
 blockBX :: BiGUL Block AbsBlock
-blockBX = 
+blockBX =
     Case [ -- Case: AbsPara
            $(normalSV [p| Para _ _ |] [p| AbsPara _ |] [p| Para _ _ |])
            ==> $(update [p| Para _ x |] [p| AbsPara x |] [d| x = mapLens inlineBX createInline |])
@@ -78,7 +78,7 @@ blockBX =
                setextLineBX = emb (\s -> if head s == '=' then 1 else 2)
                                   (\line level -> replicate (length line) (if level == 1 then '=' else '-'))
                codeBX = emb (concatMap (\(CodeLine ind code) -> code))
-                            (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind vc) 
+                            (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind vc)
                                          (zip (s ++ repeat (head s)) (lines v)))
                createInline = const $ Str ""
 
@@ -88,16 +88,16 @@ createListItem (AbsUnorderedListItem _) = UnorderedListItem "" "" '*' " " []
 createListItem (AbsOrderedListItem _) = OrderedListItem "" "" "1" '.' " " []
 
 unorderedListItemBX :: BiGUL ListItem AbsListItem
-unorderedListItemBX = $(update [p| UnorderedListItem _ _ _ _ x |] [p| AbsUnorderedListItem x |] 
+unorderedListItemBX = $(update [p| UnorderedListItem _ _ _ _ x |] [p| AbsUnorderedListItem x |]
                                [d| x = blockListBX |])
 
 orderedListItemBX :: BiGUL ListItem AbsListItem
-orderedListItemBX = $(update [p| OrderedListItem _ _ _ _ _ x |] [p| AbsOrderedListItem x |] 
+orderedListItemBX = $(update [p| OrderedListItem _ _ _ _ _ x |] [p| AbsOrderedListItem x |]
                                [d| x = blockListBX |])
 
 
 inlineBX :: BiGUL Inline AbsInline
-inlineBX = 
+inlineBX =
     Case [ -- Case: AbsStr is a space
          $(normal [| \(Spaces _) (AbsStr s) -> s == " " |] [| \(Spaces _) -> True |])
            ==> Skip (const (AbsStr " "))
@@ -123,7 +123,7 @@ inlineBX =
 
            -- Case: Emph
          , $(normalSV [p| Emph _ |] [p| AbsEmph _ |] [p| Emph _ |])
-           ==> $(update [p| Emph x |] [p| AbsEmph x |] 
+           ==> $(update [p| Emph x |] [p| AbsEmph x |]
                         [d| x = mapLens inlineBX createInline |])
 
          , $(adaptiveSV [p| _ |] [p| AbsEmph _ |])
@@ -131,7 +131,7 @@ inlineBX =
 
            -- Case: Strong
          , $(normalSV [p| Strong _ |] [p| AbsStrong _ |] [p| Strong _ |])
-           ==> $(update [p| Strong x |] [p| AbsStrong x |] 
+           ==> $(update [p| Strong x |] [p| AbsStrong x |]
                         [d| x = mapLens inlineBX createInline |])
 
          , $(adaptiveSV [p| _ |] [p| AbsStrong _ |])
