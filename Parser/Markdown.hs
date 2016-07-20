@@ -20,30 +20,32 @@ import Generics.BiGUL.TH
 data MarkdownDoc = MarkdownDoc [Block]
     deriving (Show, Eq)
 
+data Indent = DefaultIndent | Indent String
+    deriving (Show, Eq)
 
-data Block = Para String [Inline] -- indent, inlines
-           | ATXHeading String String String [Inline] String -- indent, atxs, spaces, heading, newline
-           | SetextHeading String [Inline] String String String String -- indent, heading, newline, ind, underline, spaces
+data Block = Para Indent [Inline] -- indent, inlines
+           | ATXHeading Indent String String [Inline] String -- indent, atxs, spaces, heading, newline
+           | SetextHeading Indent [Inline] String Indent String String -- indent, heading, newline, ind, underline, spaces
            | UnorderedList [ListItem]
            | OrderedList [ListItem]
-           | BlockQuote String [Block] -- indent, blocks
-           | BlankLine String String -- indent, spaces
+           | BlockQuote Indent String [Block] -- indent of first block, '>' of first block, blocks
+           | BlankLine Indent String -- indent, spaces
            | IndentedCode [CodeLine]
     deriving (Show, Eq)
 
-data ListItem = UnorderedListItem String String Char String [Block]
+data ListItem = UnorderedListItem Indent String Char String [Block]
                                 -- indent, spaces, bullet, spaces, items
-              | OrderedListItem String String String Char String [Block]
+              | OrderedListItem Indent String String Char String [Block]
                                 -- indent, spaces, number, dot, spaces, items
     deriving (Show, Eq) 
 
-data CodeLine = CodeLine String String -- indent, code
+data CodeLine = CodeLine Indent String -- indent, code
     deriving (Show, Eq)
 
 
 data Inline = Str String
-            | Softbreak String -- indent
-            | Hardbreak String String -- spaces, indent
+            | Softbreak Indent -- indent
+            | Hardbreak String Indent -- spaces, indent
             | Spaces String -- spaces
             | Emph [Inline]
             | Strong [Inline]
@@ -66,36 +68,51 @@ putPretty :: Show a => a -> IO ()
 putPretty = putStr . ppShow 
 
 printMarkdown :: MarkdownDoc -> String
-printMarkdown (MarkdownDoc blks) = concatMap printBlock blks
+printMarkdown (MarkdownDoc blks) = concatMap (printBlock "" False) blks
 
-printBlock :: Block -> String
-printBlock (BlankLine ind s) = ind ++ s
-printBlock (Para ind inls) = ind ++ (concatMap printInline inls) ++ "\n"
-printBlock (ATXHeading ind atxs sps heading sps2) = ind ++ atxs ++ sps ++ (concatMap printInline heading) ++ sps2
-printBlock (SetextHeading ind heading sps2 ind2 unls sps) = ind ++ (concatMap printInline heading) ++ sps2 ++ ind2 ++ unls ++ sps
-printBlock (UnorderedList items) = concatMap printListItem items
-printBlock (OrderedList items) = concatMap printListItem items
-printBlock (BlockQuote ind blocks) = ind ++ (concatMap printBlock blocks)
-printBlock (IndentedCode codes) = concatMap printCodeLine codes
+printIndent :: String -> Indent -> String
+printIndent defaultIndent DefaultIndent = defaultIndent
+printIndent defaultIndent (Indent s) = s
 
-printInline :: Inline -> String
-printInline (Str s) = s
-printInline (Softbreak ind) = "\n" ++ ind
-printInline (Hardbreak s ind) = s ++ "\n" ++ ind
-printInline (Spaces s) = s
-printInline (Emph inlines) = "*" ++ (concatMap printInline inlines) ++ "*"
-printInline (Strong inlines) = "**" ++ (concatMap printInline inlines) ++ "**"
-printInline (EscapedCharInline c) = "\\" ++ [c]
-printInline (InlineCode delim codes) = delim ++ codes ++ delim
-printInline (Link inlines dest) = "[" ++ (concatMap printInline inlines) ++ "]" ++ "(" ++ dest ++ ")"
-printInline (Image alt dest) = "![" ++ alt ++ "]" ++ "(" ++ dest ++ ")"
+printBlock :: String -> Bool -> Block -> String
+printBlock defaultIndent skipFirstIndent block = case block of
+    (BlankLine ind s) -> pInd ind ++ s
+    (Para ind inls) -> pInd ind ++ (concatMap (printInline defaultIndent) inls) ++ "\n"
+    (ATXHeading ind atxs sps heading sps2) -> pInd ind ++ atxs ++ sps ++ (concatMap (printInline defaultIndent) heading) ++ sps2
+    (SetextHeading ind heading sps2 ind2 unls sps) -> pInd ind ++ (concatMap (printInline defaultIndent) heading) ++ sps2 ++ printIndent defaultIndent ind2 ++ unls ++ sps
+    (UnorderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
+    (OrderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
+    (BlockQuote ind str (b1:bs)) -> pInd ind ++ str ++ printBlock (defaultIndent ++ ">") True b1 ++ (concatMap (printBlock (defaultIndent ++ ">") False) bs)
+    (IndentedCode codes) -> concatMap (printCodeLine (defaultIndent ++ "    ")) codes
+    where pInd ind = if skipFirstIndent then "" else printIndent defaultIndent ind
 
-printListItem :: ListItem -> String
-printListItem (UnorderedListItem ind sps bullet sps2 items) = ind ++ sps ++ [bullet] ++ sps2 ++ (concatMap printBlock items) 
-printListItem (OrderedListItem ind sps number dot sps2 items) = ind ++ sps ++ number ++ [dot] ++ sps2 ++ (concatMap printBlock items) 
+printInline :: String -> Inline -> String
+printInline defaultIndent inline = case inline of 
+    (Str s) -> s
+    (Softbreak ind) -> "\n" ++ pInd ind
+    (Hardbreak s ind) -> s ++ "\n" ++ pInd ind
+    (Spaces s) -> s
+    (Emph inlines) -> "*" ++ (concatMap (printInline defaultIndent) inlines) ++ "*"
+    (Strong inlines) -> "**" ++ (concatMap (printInline defaultIndent) inlines) ++ "**"
+    (EscapedCharInline c) -> "\\" ++ [c]
+    (InlineCode delim codes) -> delim ++ codes ++ delim
+    (Link inlines dest) -> "[" ++ (concatMap (printInline defaultIndent) inlines) ++ "]" ++ "(" ++ dest ++ ")"
+    (Image alt dest) -> "![" ++ alt ++ "]" ++ "(" ++ dest ++ ")"
+    where pInd = printIndent defaultIndent
 
-printCodeLine :: CodeLine -> String
-printCodeLine (CodeLine ind code) = ind ++ code
+-- FIXME: split blockquote indentation
+
+printListItem :: String -> Bool -> ListItem -> String
+printListItem defaultIndent skipFirstIndent (UnorderedListItem ind sps bullet sps2 (it1:items)) = pInd ind ++ sps ++ [bullet] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
+    where pInd ind = if skipFirstIndent then "" else printIndent defaultIndent ind
+          newIndent = defaultIndent ++ " " ++ sps2
+
+printListItem defaultIndent skipFirstIndent (OrderedListItem ind sps number dot sps2 (it1:items)) = pInd ind ++ sps ++ number ++ [dot] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
+    where pInd ind = if skipFirstIndent then "" else printIndent defaultIndent ind
+          newIndent = defaultIndent ++ " " ++ sps2
+
+printCodeLine :: String -> CodeLine -> String
+printCodeLine defaultIndent (CodeLine ind code) = printIndent defaultIndent ind ++ code
 
 ----------------------------------
 --------- Parsers ----------------
@@ -116,7 +133,7 @@ markdown = do
 parseMarkdown :: String -> MarkdownDoc
 parseMarkdown str = 
     case parseRes of
-        Left _ -> MarkdownDoc [BlankLine "" ""]
+        Left _ -> MarkdownDoc [BlankLine DefaultIndent "parsing failed, invalid markdown"]
         Right doc -> doc
     where parseRes = runParser markdown defaultStatus "" str
 
@@ -171,7 +188,7 @@ blankLine = try $ do
     putState st
     s <- spaceChars
     n <- newline
-    return $ BlankLine ind (s ++ [n])
+    return $ BlankLine (Indent ind) (s ++ [n])
     where trimLastSpaceIndent [] = []
           trimLastSpaceIndent l = 
               case last l of
@@ -188,7 +205,7 @@ atxHeading = try $ do
     heading <- many1 ((notFollowedBy (spaceChars >> newline)) >> inline)
     sps2 <- spaceChars
     newline
-    return $ ATXHeading ind atx spaces heading (sps2 ++ "\n")
+    return $ ATXHeading (Indent ind) atx spaces heading (sps2 ++ "\n")
 
 -- | Parses a setextHeading
 
@@ -205,7 +222,7 @@ setextHeading = try $ do
     chs <- many1 (oneOf setextHChars)
     sp <- spaceChars
     newline
-    return $ SetextHeading ind heading (sps2 ++ "\n") ind2 chs (sp ++ "\n")
+    return $ SetextHeading (Indent ind) heading (sps2 ++ "\n") (Indent ind2) chs (sp ++ "\n")
 
 -- | Parses a blockquote
 
@@ -220,7 +237,7 @@ blockQuote = try $ do
     putState newSt1
     blocks <- many1 block
     putState st
-    return $ BlockQuote (ind ++ sps ++ ">") blocks
+    return $ BlockQuote (Indent ind) (sps ++ ">") blocks
     where addIndent st = (indents st) ++ [BlockquoteIndentation]
 
 -- | Parse an indented code block
@@ -230,7 +247,7 @@ indentedCodeLine = try $ do
     ind <- indentation
     sps <- manyRange 4 4 ' '
     code <- anyLine
-    return $ CodeLine (ind ++ sps) (code ++ "\n")
+    return $ CodeLine (Indent (ind ++ sps)) (code ++ "\n")
 
 indentedCode :: Parsec String ParserStatus Block
 indentedCode = try $ do
@@ -249,7 +266,7 @@ paragraph = do
     ind <- indentation
     inlines <- many1 inline
     newline
-    return $ Para ind inlines
+    return $ Para (Indent ind) inlines
 
 
 -- | Parses a list
@@ -277,7 +294,7 @@ unorderedListItem  = try $ do
     blocks <- many1 block
     putState st
 
-    return $ UnorderedListItem ind sp ch sp2 blocks
+    return $ UnorderedListItem (Indent ind) sp ch sp2 blocks
     where addIndent st k = (indents st) ++ [SpaceIndentation k]
 
 unorderedList :: Parsec String ParserStatus Block
@@ -307,7 +324,7 @@ orderedListItem = try $ do
     blocks <- many1 block
     putState st
 
-    return $ OrderedListItem ind sp num ch sp2 blocks
+    return $ OrderedListItem (Indent ind) sp num ch sp2 blocks
     where addIndent st k = (indents st) ++ [SpaceIndentation k]
 
 orderedList :: Parsec String ParserStatus Block
@@ -330,7 +347,7 @@ softbreak = try $ do
     newline
     ind <- indentation
     lookAhead (spaceChars >> nonspaceChar)
-    return $ Softbreak ind
+    return $ Softbreak (Indent ind)
 
 hardbreak :: Parsec String ParserStatus Inline
 hardbreak = try $ do
