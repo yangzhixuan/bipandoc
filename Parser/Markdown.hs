@@ -64,6 +64,8 @@ deriveBiGULGeneric ''Inline
 --------- Printers -----------------
 ------------------------------------
 
+defaultMarkdown = ""
+
 putPretty :: Show a => a -> IO ()
 putPretty = putStr . ppShow 
 

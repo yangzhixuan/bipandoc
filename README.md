@@ -1,7 +1,24 @@
 BiPandoc
 ==========
 
-How to run this prototype?
+The Command-line Wrapper
+---------
+Build:
+
+```
+ghc --make bipandoc.hs -outputdir build
+```
+
+Run:
+
+```
+./bipandoc -f html -t markdown 1.html
+```
+
+See `./bipandoc --help` for more options
+
+Code for Developers
+----------
 
 ```haskell
 $ ghci -XTemplateHaskell
@@ -19,5 +36,3 @@ printMarkdown :: MarkdownDoc -> String
 -- module BX.MarkdownBX
 markdownBX :: BiGUL MarkdownDoc AbsDocument
 ```
-
-Please see the `BiPandoc-Proposal.markdown` for more information.
