@@ -1,3 +1,4 @@
+
 {-# Language TemplateHaskell, TypeFamilies #-}
 module BX.BXHelpers where
 
@@ -156,12 +157,12 @@ mapFusion f g =
 filterLens :: (Show a) => (a -> Bool) -> BiGUL [a] [a]
 filterLens f = 
     Case [ -- Case 1: [] []
-           $(normalSV [p| [] |] [p| [] |] [p| [] |])
-           Replace,
+           $(normal [| \s [] -> (null . filter f) s |] [| \s -> (null . filter f) s |] )
+           ($(rearrV [| \[] -> () |]) (Skip (const ()))),
 
-           -- Case 6: s:ss [], => make s empty
-           $(adaptiveSV [p| _:_ |] [p| [] |])
-           (\s v -> []),
+           -- Case 1': s:ss [], => make s empty
+           $(adaptiveSV [p| _ |] [p| [] |])
+           (\s v -> filter (not . f) s),
 
            -- Case 2: [] v:vs, not f v => fail
            $(normal [| \[] (v:vs) -> not (f v) |] [| const False |])
