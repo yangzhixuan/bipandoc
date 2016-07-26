@@ -153,11 +153,15 @@ mapFusion f g =
           ==> $(update [p| [] |] [p| [] |] [d| |])
         ]
 
-filterLens :: (Eq a, Show a) => (a -> Bool) -> BiGUL [a] [a]
+filterLens :: (Show a) => (a -> Bool) -> BiGUL [a] [a]
 filterLens f = 
     Case [ -- Case 1: [] []
            $(normalSV [p| [] |] [p| [] |] [p| [] |])
            Replace,
+
+           -- Case 6: s:ss [], => make s empty
+           $(adaptiveSV [p| _:_ |] [p| [] |])
+           (\s v -> []),
 
            -- Case 2: [] v:vs, not f v => fail
            $(normal [| \[] (v:vs) -> not (f v) |] [| const False |])
@@ -171,14 +175,15 @@ filterLens f =
            $(normal [| \(s:ss) _ -> not (f s) |] [| \(s:ss) -> not (f s) |] )
            ($(rearrS [| \(s:ss) -> ss |]) (filterLens f)),
 
-           -- Case 5: s:ss v:vs, f s && s == v => Replace and recursion
-           $(normal [| \(s:ss) (v:vs) -> (f s) && (s == v) |] [| \(s:ss) -> (f s) |] )
+           -- Case 5: s:ss v:vs, f s && f v => Replace and recursion
+           $(normal [| \(s:ss) (v:vs) -> (f s) && (f v) |] [| \(s:ss) -> (f s) |] )
            $(update [p| x:xs |] [p| x:xs |] [d| x = Replace; xs = filterLens f |]),
 
-           -- Case 6: s:ss v, f s && (v == [] || head v /= s) => adapative remove s
-           $(adaptive [| \(s:ss) v -> (f s) && (v == [] || head v /= s) |])
-           (\s v -> dropWhile (\k -> (f k) && (v == [] || head v /= k)) s)
+           -- Case 5': s:ss v:vs, f s && not (f v) => fail
+           $(normal [| \(s:ss) (v:vs) -> (f s) && not (f v) |] [| const False |] )
+           (Fail "invalid view")
         ]
+
 
 expandLens :: (Eq a, Show a, Eq b, Show b) => Bool -> BiGUL [(a,b)] [(a,[b])]
 expandLens check = 
