@@ -16,8 +16,8 @@ import qualified System.IO.Strict as IOS
 
 
 
-htmlBX :: BiGUL Document AbsDocument
-htmlBX = $(update [p| Document _ _ _ html _ |] [p| html |]
+htmlBX :: BiGUL HTMLDoc AbsDocument
+htmlBX = $(update [p| HTMLDoc _ _ _ html _ |] [p| html |]
                   [d| html = filterGTree isSupportedNode `Compose` blockListHTML |])
 
 blockListHTML :: BiGUL HTML AbsDocument
@@ -303,64 +303,3 @@ addQuotes s v = case s of
   _       -> "\"" ++ v ++ "\""  -- default case.
 
 
-
-testFromHTMLG :: IO ()
-testFromHTMLG = do
-  i <- IOS.readFile "1.html"
-  let o  = either (error. show) id (parse parseDoc "1.html" i)
-      oo = refineDoc o
-      ast = maybe (error "nothing") id (get htmlBX oo)
-  putStrLn (show ast)
-
-
-getHTMLGTree :: IO (GTree CTag)
-getHTMLGTree = do
-  i <- IOS.readFile "1.html"
-  let o  = either (error. show) id (parse parseDoc "1.html" i)
-      oo = refineDoc o
-      Document _ _ _ (GTree (CTag _ _ _ _) html) _ = oo
-      html' = filter (\x -> case x of GTree (CTag _ (Right "body") _ _) _ -> True; _ -> False) html
-  return (head html')
-
-testFromHTMLG' :: IO ()
-testFromHTMLG' = do
-  i <- readFile "1.html"
-  let o  = either (error. show) id (parse parseDoc "1.html" i)
-      oo = refineDoc o
-      ast = (getTrace htmlBX oo)
-  putStrLn (show ast)
-
-
-testFromHTMLP :: IO ()
-testFromHTMLP = do
-  i <- IOS.readFile "1.html"
-  let o  = either (error. show) id (parse parseDoc "1.html" i)
-      oo = refineDoc o
-      ast = maybe (error "nothing") id (get htmlBX oo)
-      s'  = maybe (error "nothing") id (put htmlBX oo ast)
-  putStrLn (prtDocument s')
-
-testFromHTMLP2 :: IO ()
-testFromHTMLP2 = do
-  i <- IOS.readFile "1.html"
-  let o  = either (error. show) id (parse parseDoc "1.html" i)
-      oo = refineDoc o
-      ast = maybe (error "nothing") id (get htmlBX oo)
-      newS = Document ""  doctype " " html "\n"
-      s'  = maybe (error "nothing") id (put htmlBX newS ast)
-  putStrLn (prtDocument s')
-  where doctype = "<!DOCTYPE HTML>"
-        html    = (GTree (CTag Block (Right "html") [] NormalClose) [GTree (CTagText OtherText (Right "\n")) [],GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (Right "\n")) []],GTree (CTagText OtherText (Right "\n  ")) [],GTree (CTag Block (Right "body") [] NormalClose) []])
-
-
-testFromHTMLP2' :: IO ()
-testFromHTMLP2' = do
-  i <- IOS.readFile "1.html"
-  let o  = either (error. show) id (parse parseDoc "1.html" i)
-      oo = refineDoc o
-      ast = maybe (error "nothing") id (get htmlBX oo)
-  let newS = Document ""  doctype " " html "\n"
-      s'  = putTrace htmlBX newS ast
-  putStrLn (show s')
-  where doctype = "<!DOCTYPE HTML>"
-        html    = (GTree (CTag Block (Right "html") [] NormalClose) [GTree (CTagText OtherText (Right "\n")) [],GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (Right "\n")) []],GTree (CTagText OtherText (Right "\n  ")) [],GTree (CTag Block (Right "body") [] NormalClose) []])

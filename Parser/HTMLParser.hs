@@ -23,7 +23,7 @@ import Debug.Trace
 
 data GTree a = GTree a [GTree a] deriving (Show, Eq)
 
-data Document = Document Spaces DocType Spaces HTML Spaces deriving (Show, Eq)
+data HTMLDoc = HTMLDoc Spaces DocType Spaces HTML Spaces deriving (Show, Eq)
 type Spaces = String
 type DocType = String
 type HTML = GTree CTag
@@ -105,7 +105,7 @@ supportedName = fromList [
 
 
 deriveBiGULGeneric ''GTree
-deriveBiGULGeneric ''Document
+deriveBiGULGeneric ''HTMLDoc
 deriveBiGULGeneric ''CTag
 deriveBiGULGeneric ''SupportedName
 deriveBiGULGeneric ''CloseMark
@@ -130,7 +130,7 @@ isSupportedNode _ = False
 
 
 -------------------
-parseDoc :: Parsec Dec String Document
+parseDoc :: Parsec Dec String HTMLDoc
 parseDoc = do
   space0 <- spaceChars
   d      <- pDocType
@@ -138,7 +138,7 @@ parseDoc = do
   html   <- pHTML
   space2 <- spaceChars <?> "trailing spaces at end of the html file"
   eof
-  return $ Document space0 d space1 html space2
+  return $ HTMLDoc space0 d space1 html space2
   <?> "parseDoc"
 
 anyNode :: PU HTML
@@ -346,8 +346,8 @@ isVoidElement = flip elem ["area", "base", "br", "col", "command", "embed", "hr"
 
 ------------------------
 -- printing function from CST to HTML
-prtDocument :: Document -> String
-prtDocument (Document pre doctype mid html tra) = pre ++ doctype ++ mid ++ prtHTML html ++ tra
+prtDocument :: HTMLDoc -> String
+prtDocument (HTMLDoc pre doctype mid html tra) = pre ++ doctype ++ mid ++ prtHTML html ++ tra
 
 prtHTML :: HTML -> String
 prtHTML (GTree (CTag _ tn sOrAs SelfClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ "/>"
@@ -385,8 +385,8 @@ prtSupportedName CQuoted = "q"; prtSupportedName CCite = "cite"
 prtSupportedName CLink = "a"; prtSupportedName CImg = "img"
 
 ------------------------
-refineDoc :: Document -> Document
-refineDoc (Document s0 doctype s1 html s2) = Document s0 doctype s1 (refine1 html) s2
+refineDoc :: HTMLDoc -> HTMLDoc
+refineDoc (HTMLDoc s0 doctype s1 html s2) = HTMLDoc s0 doctype s1 (refine1 html) s2
 
 refine1 :: HTML -> HTML
 refine1 t@(GTree (CTag mk0 tn attrs mk1) subtags) =
