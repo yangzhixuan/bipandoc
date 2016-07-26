@@ -84,8 +84,8 @@ blockBX =
 
 
 createListItem :: AbsListItem -> ListItem
-createListItem (AbsUnorderedListItem _) = UnorderedListItem DefaultIndent "" '*' " " []
-createListItem (AbsOrderedListItem _) = OrderedListItem DefaultIndent "" "1" '.' " " []
+createListItem (AbsUnorderedListItem _) = UnorderedListItem DefaultIndent "" '*' " " [BlankLine (Indent "") "\n"]
+createListItem (AbsOrderedListItem _) = OrderedListItem DefaultIndent "" "1" '.' " " [BlankLine (Indent "") "\n"]
 
 unorderedListItemBX :: BiGUL ListItem AbsListItem
 unorderedListItemBX = $(update [p| UnorderedListItem _ _ _ _ x |] [p| AbsUnorderedListItem x |]
@@ -110,9 +110,6 @@ inlineBX =
                     [| \(EscapedCharInline _) -> True |])
            ==> $(update [p| EscapedCharInline c |] [p| AbsStr (c : []) |]
                         [d| c = Replace |])
-
-         , $(adaptive [| \_ (AbsStr s) -> length s == 1 && head s `elem` punctuation |])
-           ==> \s v -> (EscapedCharInline ' ')
 
            -- Case: AbsStr
          , $(normalSV [p| Str _ |] [p| AbsStr _ |] [p| Str _ |])

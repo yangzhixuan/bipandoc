@@ -280,7 +280,9 @@ unorderedListItem  = try $ do
     ind <- indentation
     sp <- manyRange 0 3 ' '
     ch <- oneOf unorderedListChar
-    sp2 <- many1 (char ' ')
+    -- Generally, several spaces is needed between the bullet and the first char of the ListItem.
+    -- However, when the first item is a BlankLine, the spaces can be omitted.
+    sp2 <- (lookAhead newline >> return "") <|> many1 (char ' ')
 
     st <- getState
     let newIndent = addIndent st (1 + length sp2)
@@ -310,7 +312,7 @@ orderedListItem = try $ do
     sp <- manyRange 0 3 ' '
     num <- many1 (oneOf "1234567890")
     ch <- char '.'
-    sp2 <- many1 (char ' ')
+    sp2 <- (lookAhead newline >> return "") <|> many1 (char ' ')
 
     st <- getState
     let newIndent = addIndent st (length num + 1 + length sp2)
