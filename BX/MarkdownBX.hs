@@ -20,7 +20,7 @@ blockListBX :: BiGUL [Block] [AbsBlock]
 blockListBX = (filterLens nonBlankLines) `Compose` (mapLens blockBX createBlock)
     where nonBlankLines (BlankLine _ _) = False
           nonBlankLines _ = True
-          createBlock = const $ Para "" []
+          createBlock = const $ Para DefaultIndent []
 
 blockBX :: BiGUL Block AbsBlock
 blockBX =
@@ -29,7 +29,7 @@ blockBX =
            ==> $(update [p| Para _ x |] [p| AbsPara x |] [d| x = mapLens inlineBX createInline |])
 
          , $(adaptiveSV [p| _ |] [p| AbsPara _ |])
-           ==> \_ v -> Para "" []
+           ==> \_ v -> Para DefaultIndent []
 
            -- Case: AbsHeading
          , $(normalSV [p| ATXHeading _ _ _ _ _ |] [p| AbsHeading _ _ |] [p| ATXHeading _ _ _ _ _ |])
@@ -41,7 +41,7 @@ blockBX =
                         [d| heading = mapLens inlineBX createInline; setextLine = setextLineBX |])
 
          , $(adaptiveSV [p| _ |] [p| AbsHeading _ _ |])
-           ==> \_ v -> ATXHeading "" "" " " [] "\n"
+           ==> \_ v -> ATXHeading DefaultIndent "" " " [] "\n"
 
            -- Case: AbsUnorderedList
          , $(normalSV [p| UnorderedList _ |] [p| AbsUnorderedList _ |] [p| UnorderedList _ |])
@@ -60,19 +60,19 @@ blockBX =
            ==> \s v -> OrderedList []
 
            -- Case: AbsBlockQuote
-         , $(normalSV [p| BlockQuote _ _ |] [p| AbsBlockQuote _ |] [p| BlockQuote _ _ |])
-           ==> $(update [p| BlockQuote _ blocks |] [p| AbsBlockQuote blocks |]
+         , $(normalSV [p| BlockQuote _ _ _ |] [p| AbsBlockQuote _ |] [p| BlockQuote _ _ _ |])
+           ==> $(update [p| BlockQuote _ _ blocks |] [p| AbsBlockQuote blocks |]
                         [d| blocks = blockListBX |])
 
          , $(adaptiveSV [p| _ |] [p| AbsBlockQuote _ |])
-           ==> \s v -> BlockQuote "" []
+           ==> \s v -> BlockQuote DefaultIndent ">" []
 
            -- Case: AbsCode
          , $(normalSV [p| IndentedCode _ |] [p| AbsCode _ |] [p| IndentedCode _ |])
            ==> $(update [p| IndentedCode codes |] [p| AbsCode codes |]
                         [d| codes = codeBX |])
          , $(adaptiveSV [p| _ |] [p| AbsCode _ |])
-           ==> \s v -> IndentedCode [CodeLine "" ""]  -- note that codeBX assume IndentedCode has at least one element
+           ==> \s v -> IndentedCode [CodeLine DefaultIndent ""]  -- note that codeBX assume IndentedCode has at least one element
          ]
          where atxBX = emb length (\s v -> replicate v '#')
                setextLineBX = emb (\s -> if head s == '=' then 1 else 2)
@@ -84,8 +84,8 @@ blockBX =
 
 
 createListItem :: AbsListItem -> ListItem
-createListItem (AbsUnorderedListItem _) = UnorderedListItem "" "" '*' " " []
-createListItem (AbsOrderedListItem _) = OrderedListItem "" "" "1" '.' " " []
+createListItem (AbsUnorderedListItem _) = UnorderedListItem DefaultIndent "" '*' " " []
+createListItem (AbsOrderedListItem _) = OrderedListItem DefaultIndent "" "1" '.' " " []
 
 unorderedListItemBX :: BiGUL ListItem AbsListItem
 unorderedListItemBX = $(update [p| UnorderedListItem _ _ _ _ x |] [p| AbsUnorderedListItem x |]
@@ -143,14 +143,14 @@ inlineBX =
 
               -- NOTE: the correct indentation is infered later
          , $(adaptiveSV [p| _ |] [p| AbsSoftbreak |])
-           ==> \s v -> Softbreak ""
+           ==> \s v -> Softbreak DefaultIndent
 
            -- Case: Hardbreak
          , $(normalSV [p| Hardbreak _ _ |] [p| AbsHardbreak |] [p| Hardbreak _ _|])
            ==> Skip (const AbsHardbreak)
 
          , $(adaptiveSV [p| _ |] [p| AbsHardbreak |])
-           ==> \s v -> Hardbreak "  " ""
+           ==> \s v -> Hardbreak "  " DefaultIndent
 
            -- Case: Code
          , $(normalSV [p| InlineCode _ _ |] [p| AbsInlineCode _ |] [p| InlineCode _ _ |])
