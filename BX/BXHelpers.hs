@@ -172,7 +172,7 @@ filterLens f =
            ($(rearrS [| \(s:ss) -> ss |]) (filterLens f)),
 
            -- Case 5: s:ss v:vs, f s && s == v => Replace and recursion
-           $(normal [| \(s:ss) (v:vs) -> (f s) && (s == v) |] [| \(s:ss) -> (f s) |] )
+           $(normal [| \(s:ss) (v:vs) -> (f s) |] [| \(s:ss) -> (f s) |] )
            $(update [p| x:xs |] [p| x:xs |] [d| x = Replace; xs = filterLens f |]),
 
            -- Case 6: s:ss v, f s && (v == [] || head v /= s) => adapative remove s
