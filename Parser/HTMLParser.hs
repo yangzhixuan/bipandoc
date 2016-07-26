@@ -450,10 +450,10 @@ isSubtreeInline (GTree (CTag _ (Left tn) _ _) _) = tn `elem` [CPara, CHead 1, CH
 isSubtreeInline _ = False
 
 ------------------------
-parseHTML :: String -> Document
+parseHTML :: String -> HTMLDoc
 parseHTML src = refineDoc $ either (error . show) id (parse parseDoc "" src)
 
-defaultHTML = "<!DOCTYPE html>\n<html>\n<head>\n</head>\n<body>\n</body>\n"
+defaultHTML = "<!DOCTYPE HTML>\n<html>\n<head>\n</head>\n<body>\n</body>\n</html>"
 
 t1 :: IO ()
 t1 = do

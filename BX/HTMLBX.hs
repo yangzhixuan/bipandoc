@@ -289,7 +289,7 @@ createInline v = case v of
 replaceAltAndDest :: BiGUL [Either Spaces Attribute] (String, String)
 replaceAltAndDest =
   emb (foldr foldrGetF ("",""))
-      (\s (alt, src) -> foldr (foldrPutF alt src) [] (Right (Attribute "src" "=" src): Right (Attribute "alt" "=" alt):s))
+      (\s (alt, src) -> foldr (foldrPutF alt src) [] (Left " ": Right (Attribute "src" "=" src) : Left " " : Right (Attribute "alt" "=" alt):s))
   where foldrGetF e (alt, src) = case e of
             Left _ -> (alt, src)
             Right (Attribute "src" _ src') -> (alt, dropQuotes src')
@@ -314,7 +314,7 @@ replaceHref =
 
         , $(normalSV [p| [] |] [p| [] |] [p| [] |]) $
             $(update [p| [] |] [p| [] |] [d|  |])
-        , $(adaptiveSV [p| [] |] [p| _:_ |]) (\_ v -> [Right (Attribute "href" "=" (addQuotes "" v))] )
+        , $(adaptiveSV [p| [] |] [p| _:_ |]) (\_ v -> [Left " ", Right (Attribute "href" "=" (addQuotes "" v))] )
         ]
 
 

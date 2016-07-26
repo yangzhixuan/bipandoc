@@ -12,6 +12,7 @@ import Text.Show.Pretty
 import GHC.Generics
 import Generics.BiGUL.TH
 
+import Debug.Trace
 --------------------------------------------
 --------- Concrete Markdown Syntax ---------
 --------------------------------------------
@@ -120,9 +121,9 @@ printCodeLine defaultIndent (CodeLine ind code) = printIndent defaultIndent ind 
 --------- Parsers ----------------
 ----------------------------------
 
-data ParserStatus = ParserStatus { inEmph :: Bool, inLink :: Bool, indents :: [Indentation], skipIndentOnce :: Bool }
+data ParserStatus = ParserStatus { inEmph :: Bool, inLink :: Bool, indents :: [Indentation], skipIndentOnce :: Bool } deriving (Show)
 
-data Indentation = BlockquoteIndentation | SpaceIndentation Int
+data Indentation = BlockquoteIndentation | SpaceIndentation Int deriving (Show)
 
 defaultStatus = ParserStatus False False [] False
 
@@ -191,11 +192,9 @@ blankLine = try $ do
     s <- spaceChars
     n <- newline
     return $ BlankLine (Indent ind) (s ++ [n])
-    where trimLastSpaceIndent [] = []
-          trimLastSpaceIndent l = 
-              case last l of
-                  SpaceIndentation _ -> init l
-                  _ -> l
+    where trimLastSpaceIndent = reverse . (dropWhile isSpaceIndent) . reverse
+          isSpaceIndent (SpaceIndentation _) = True
+          isSpaceIndent _ = False
 
 -- | Parses a atxHeading
 atxHeading :: Parsec String ParserStatus Block
@@ -265,6 +264,10 @@ indentedCode = try $ do
 
 paragraph :: Parsec String ParserStatus Block
 paragraph = do
+    -- rest <- getInput
+    -- st <- getState
+    -- trace ("p: " ++ (show rest) ++ " with indent: " ++ (show st)) (return ())
+
     ind <- indentation
     inlines <- many1 inline
     newline

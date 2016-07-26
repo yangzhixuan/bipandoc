@@ -16,13 +16,15 @@ import System.IO
 import qualified Options.Applicative as OA
 import Options.Applicative ((<>), (<$>), (<*>))
 
-data Options = Options { srcFormat :: String, dstFormat :: String, dstFile :: String, outputFile :: String, srcFile :: String }
+import Debug.Trace 
+
+data Options = Options { srcFormat :: String, dstFormat :: String, dstFile :: String, outputFile :: String, srcFile :: String } deriving (Show)
 
 optsParser = Options <$> OA.strOption ( OA.long "from" <> OA.short 'f' <> OA.metavar "FORMAT" <> OA.help "Source format")
                     <*> OA.strOption ( OA.long "to" <> OA.short 't' <> OA.metavar "FORMAT" <> OA.help "Destination format")
                     <*> (fmap (fromMaybe "") $ OA.optional (OA.strOption ( OA.long "dst" <> OA.short 'd' <> OA.metavar "FILENAME" <> OA.help "Destination filename. Use an empty document if not specified.")))
                     <*> (fmap (fromMaybe "") $  OA.optional (OA.strOption ( OA.long "output" <> OA.short 'o' <> OA.metavar "FILENAME" <> OA.help "Output filename")))
-                    <*> OA.argument OA.str (OA.metavar "FILE")
+                    <*> (fmap (fromMaybe "") $ OA.optional $ OA.argument OA.str (OA.metavar "FILE"))
 
 optsWithInfo = OA.info (OA.helper <*> optsParser) (OA.fullDesc <> OA.progDesc "Supported formats: markdown, html" <> OA.header "bipandoc - a bidirectional document converter")
 
@@ -71,6 +73,8 @@ main = do
     src <- hGetContents srcH
     let viewM = get opts src
 
+    -- MarkdownParser.putPretty viewM
+
     if isNothing viewM
        then do
            putStrLn $ "Failed to get view from " ++ src
@@ -80,7 +84,7 @@ main = do
 
            -- Read sychronization target, use a default document if not specied
            dst <- if dstFile opts == ""
-                     then return $ defaultDocument (dstFile opts)
+                     then return $ defaultDocument (dstFormat opts)
                      else do
                          dstH <- openFile (dstFile opts) ReadMode
                          hGetContents dstH

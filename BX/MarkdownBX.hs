@@ -78,14 +78,15 @@ blockBX =
                setextLineBX = emb (\s -> if head s == '=' then 1 else 2)
                                   (\line level -> replicate (length line) (if level == 1 then '=' else '-'))
                codeBX = emb (concatMap (\(CodeLine ind code) -> code))
-                            (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind vc)
+                            (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind (vc ++ "\n"))
                                          (zip (s ++ repeat (head s)) (lines v)))
                createInline = const $ Str ""
 
 
 createListItem :: AbsListItem -> ListItem
-createListItem (AbsUnorderedListItem _) = UnorderedListItem DefaultIndent "" '*' " " [BlankLine (Indent "") "\n"]
-createListItem (AbsOrderedListItem _) = OrderedListItem DefaultIndent "" "1" '.' " " [BlankLine (Indent "") "\n"]
+createListItem (AbsUnorderedListItem items) = UnorderedListItem DefaultIndent "" '*' " " (if null items then [BlankLine (Indent "") "\n"] else [])
+createListItem (AbsOrderedListItem items) = OrderedListItem DefaultIndent "" "1" '.' " " (if null items then [BlankLine (Indent "") "\n"] else [])
+
 
 unorderedListItemBX :: BiGUL ListItem AbsListItem
 unorderedListItemBX = $(update [p| UnorderedListItem _ _ _ _ x |] [p| AbsUnorderedListItem x |]
