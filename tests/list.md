@@ -1,3 +1,5 @@
+*
+ gef
 * * def
 
 xyz
