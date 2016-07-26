@@ -4,16 +4,76 @@
 </head>
   <body>
   <!-- comment will be ignored -->
-  <ul>
-    not good
-    <li>
-      no good
-      <p>1</p>
-      <p>aa bb 33</p>
-    </li>
-  </ul>
-  <h1>sdfdsf   wa</h1>
-  <p style="hehe:haha" class="OOXX">123 abc <em>   zzz     </em></p>
+  <!-- test div and ul -->
+  <!-- <div>
+    <ul>
+      not good
+      <li>
+        no good
+        <p>1</p>
+        <p>aa bb 33</p>
+      </li>
+    </ul>
+  </div> -->
+
+  <!-- test ol -->
+  <!-- <ol>
+    Ordered list. these words will not be carried to AST.
+    <li>these words will also not be carried to AST</li>
+    <li><p> these will. <img src="some url in the world" alt="simple image"></p></li>
+  </ol> -->
+  <!-- dl is not supported in the current AST -->
+
+  <!-- test code block -->
+  <!-- <pre>
+    <code>let g f = f + f in g</code>
+  </pre> -->
+
+  <!-- test code inline -->
+  <!-- <p><code>fix f = f (fix f)</code><br>
+  this is a function</p> -->
+
+  <!-- test (hyper) links. <a> tag -->
+  <!-- <div><p><a href="www.google.co.jp">nothing here</a></p></div> -->
+
+  <!-- test entities -->
+  <!-- <p>&nbsp;&nbsp;&#160; a&#771;   &pound;&#163; O&#770;</p> -->
+
+  <!-- test img tag -->
+  <!-- <p><img src="www.google.co.jp/img" alt="image from Google.co.jp" ></p>
+  <p><img src="www.google.com/ncr/img" alt="image from Google.com" /></p> -->
+
+  <!-- test hardbreak. <br> -->
+<!--   <pre>
+  <p>
+    233  <br>
+    abc
+    acv                                 
+
+
+    sss
+  </p>
+  </pre> -->
+
+  <!-- test trailing spaces. soft break. hard break -->
+  <p>
+    233  <br>  
+    abc
+    acv                                 
+
+
+    sss
+  </p>
+
+  <!-- <div>
+    <h1>1o   a</h1>
+    <h2>2o   b</h2>
+    <p>3o    c <code>let f = f + 1 in f</code> </p>
+  </div>
+  <p style="hehe:haha" class="OOXX">
+    123 abc <em> xxx  <strong> <em>ZZZ</em></strong>  </em>
+  </p> -->
+    <!-- <p>3o    c <code>let f = f + 1 in f</code> </p> -->
 
   </body>
 </html>
