@@ -14,43 +14,49 @@ import Parser.Markdown
 import Text.Megaparsec
 
 
-testHTML1 :: IO ()
-testHTML1 = do
+testGetPut1 :: IO ()
+testGetPut1 = do
   putStrLn "test GetPut"
+  putStrLn ""
   i <- readFile "tests/1.html"
   putStrLn "original HTML document:\n==================="
   putStrLn i
   let htmlCST_= either (error. show) id (parse parseDoc "noname" i)
       htmlCST = refineDoc htmlCST_
-      htmlAST = fromJust' (get htmlBX htmlCST)
+      htmlAST = maybe (error "parse cst to ast error") id (get htmlBX htmlCST)
   putStrLn "AST of HTML document:\n==================="
   putStrLn (show htmlAST)
-
+  putStrLn ""
   putStrLn "put AST back to CST and HTML file\n:=============="
-  let htmlCST' = fromJust' (put htmlBX htmlCST htmlAST)
+  let htmlCST' = maybe (error "print ast to cst error") id (put htmlBX htmlCST htmlAST)
   putStrLn (prtDocument htmlCST')
-
-  putStrLn "it html' equal to the input string?"
+  putStrLn ""
+  putStrLn "is html' equal to the input string?"
+  putStrLn (show (prtDocument htmlCST' == i))
+  putStrLn ""
+  putStrLn "put to an empty markdown file:\n==================="
+  let mdCST = maybe (error "print ast to cst error") id (put BXM.markdownBX (MarkdownDoc []) htmlAST)
+  putStrLn (printMarkdown mdCST)
+  putStrLn ""
+  putStrLn "parse that generated markdown file to AST:\n==================="
+  let mdAST' = maybe (error "parse cst to ast error") id (get BXM.markdownBX mdCST)
+  putStrLn (show mdAST')
+  putStrLn ""
+  putStrLn "put that markdown AST back to html CST:\n==================="
+  let htmlCST' = maybe (error "print ast to cst error") id (put htmlBX htmlCST mdAST')
+  putStrLn (prtDocument htmlCST')
+  putStrLn ""
+  putStrLn "is the newly generated html document equl to the origin one?:\n==================="
   putStrLn (show (prtDocument htmlCST' == i))
 
-  putStrLn "put to an empty markdown file:\n==================="
-  let mdCST = fromJust' (put BXM.markdownBX (MarkdownDoc []) htmlAST)
-  putStrLn (printMarkdown mdCST)
 
-
-fromJust' = maybe (error "nothing") id
-
-
-
-
-
-
+testPutToAnEmptyHTML = test1pModified
 
 
 ---------------------------------------------------------
 pHTML1 :: IO HTMLDoc
 pHTML1 = do
-  i <- IOS.readFile "1.html"
+  i <- readFile "tests/1.html"
   let o  = either (error. show) id (parse parseDoc "1.html" i)
       oo = refineDoc o
   return oo
@@ -63,7 +69,7 @@ test1g = do
 
 test1gTrace :: IO ()
 test1gTrace = do
-  i <- readFile "1.html"
+  i <- readFile "tests/1.html"
   let o  = either (error. show) id (parse parseDoc "1.html" i)
       oo = refineDoc o
       ast = (getTrace htmlBX oo)
@@ -73,24 +79,24 @@ test1gTrace = do
 test1p :: IO ()
 test1p = do
   cst <- pHTML1
-  let ast = maybe (error "nothing") id (get htmlBX cst)
-  let s' = maybe (error "nothing") id (put htmlBX cst ast)
+  let ast = maybe (error "parse cst to ast error") id (get htmlBX cst)
+  let s' = maybe (error "print ast to cst error") id (put htmlBX cst ast)
   putStrLn (prtDocument s')
 
 test1pModified :: IO ()
 test1pModified = do
   cst <- pHTML1
   let newS = emptyHTML
-      ast = maybe (error "nothing") id (get htmlBX cst)
-      s'  = maybe (error "nothing") id (put htmlBX newS ast)
+      ast = maybe (error "parse cst to ast error") id (get htmlBX cst)
+      s'  = maybe (error "print ast to cst error") id (put htmlBX newS ast)
   putStrLn (prtDocument s')
 
-test1pModifiedTrace' :: IO ()
-test1pModifiedTrace' = do
+test1pModifiedTrace :: IO ()
+test1pModifiedTrace = do
   cst <- pHTML1
   let newS = emptyHTML
-      ast = maybe (error "nothing") id (get htmlBX cst)
-      s'  = maybe (error "nothing") id (put htmlBX newS ast)
+      ast = maybe (error "parse cst to ast error") id (get htmlBX cst)
+      s'  = putTrace htmlBX newS ast
   putStrLn (show s')
 
 
@@ -106,7 +112,7 @@ emptyHTML = HTMLDoc ""  doctype " " html "\n"
 
 getHTMLGTree :: IO (GTree CTag)
 getHTMLGTree = do
-  i <- IOS.readFile "1.html"
+  i <- readFile "tests/1.html"
   let o  = either (error. show) id (parse parseDoc "1.html" i)
       oo = refineDoc o
       HTMLDoc _ _ _ (GTree (CTag _ _ _ _) html) _ = oo

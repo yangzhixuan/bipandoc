@@ -73,7 +73,7 @@ blockListBX =
         , $(adaptiveSV [p| _:_ |] [p| [] |] ) (\_ _ -> [])
 
           -- add more source elements
-        , $(adaptiveSV [p| [] |] [p| _:_ |] ) (\_ v -> replicate (length v) (GTree CDefaultTag []))
+        , $(adaptiveSV [p| [] |] [p| _:_ |] ) (\_ v -> [craeteBlock (head v)])
         ]
 
 
@@ -85,32 +85,37 @@ blockListBX =
 blockBX :: BiGUL (GTree CTag) AbsBlock
 blockBX =
   Case [ -- Case: AbsPara
-         $(normalSV [p| GTree (CTag Block (Left CPara) _ NormalClose) _ |] [p| AbsPara _ |] [p| GTree (CTag Block (Left CPara) _ NormalClose) _ |])
-         ==> $(update [p| GTree (CTag Block (Left CPara) _ NormalClose) xs |] [p| AbsPara xs |] [d| xs = mapLens inlineBX createInline |])
+         $(normalSV [p| GTree (CTag Block (Left CPara) _ NormalClose) _ |] [p| AbsPara _ |]
+                    [p| GTree (CTag Block (Left CPara) _ NormalClose) _ |])
+         ==> $(update [p| GTree (CTag Block (Left CPara) _ NormalClose) xs |] [p| AbsPara xs |]
+                      [d| xs = mapLens inlineBX createInline |])
 
          -- Case: Heading
-       , $(normalSV [p| GTree (CTag Block (Left (CHead _ )) _ NormalClose) _ |] [p| AbsHeading _ _ |] [p| GTree (CTag Block (Left (CHead _ )) _ NormalClose) _ |])
+       , $(normalSV [p| GTree (CTag Block (Left (CHead _ )) _ NormalClose) _ |] [p| AbsHeading _ _ |]
+                    [p| GTree (CTag Block (Left (CHead _ )) _ NormalClose) _ |])
          ==> $(update [p| GTree (CTag Block (Left (CHead level )) _ NormalClose) contents |] [p| AbsHeading level contents |]
                       [d| level = Replace; contents = mapLens inlineBX createInline |])
 
          -- Case: AbsUnorderedList
-       , $(normalSV [p| GTree (CTag Block (Left CUnorderedList) _ NormalClose) _ |] [p| AbsUnorderedList _ |] [p| GTree (CTag Block (Left CUnorderedList) _ NormalClose) _ |])
+       , $(normalSV [p| GTree (CTag Block (Left CUnorderedList) _ NormalClose) _ |] [p| AbsUnorderedList _ |]
+                    [p| GTree (CTag Block (Left CUnorderedList) _ NormalClose) _ |])
          ==> $(update [p| GTree (CTag Block (Left CUnorderedList) _ NormalClose) items |] [p| AbsUnorderedList items |]
-                      [d| items = filterLens isSupportedNode `Compose` mapLens unorderedListItemBX createListItem |])
+                      [d| items = mapLens unorderedListItemBX createListItem |])
 
          -- Case: AbsOrderedList
-       , $(normalSV [p| GTree (CTag Block (Left COrderedList) _ NormalClose) _ |] [p| AbsOrderedList _ |] [p| GTree (CTag Block (Left COrderedList) _ NormalClose) _ |])
+       , $(normalSV [p| GTree (CTag Block (Left COrderedList) _ NormalClose) _ |] [p| AbsOrderedList _ |]
+                    [p| GTree (CTag Block (Left COrderedList) _ NormalClose) _ |])
          ==> $(update [p| GTree (CTag Block (Left COrderedList) _ NormalClose) items |] [p| AbsOrderedList items |]
-                      [d| items = filterLens isSupportedNode `Compose` mapLens orderedListItemBX createListItem |])
+                      [d| items = mapLens orderedListItemBX createListItem |])
 
          -- Case: AbsBlockQuote
-       , $(normalSV [p| GTree (CTag Block (Left CBlockQuote) _ NormalClose) _ |] [p| AbsBlockQuote _ |] [p| GTree (CTag Block (Left CBlockQuote) _ NormalClose) _ |])
+       , $(normalSV [p| GTree (CTag Block (Left CBlockQuote) _ NormalClose) _ |] [p| AbsBlockQuote _ |]
+                    [p| GTree (CTag Block (Left CBlockQuote) _ NormalClose) _ |])
          ==> $(update [p| GTree (CTag Block (Left CBlockQuote) _ NormalClose) blocks |] [p| AbsBlockQuote blocks |]
                       [d| blocks = filterLens isSupportedNode `Compose` blockListBX |])
 
          -- Case: AbsCode. <pre><code> ... </code> </pre>
-       , $(normalSV [p| GTree (CTag Block (Left CPre) _ NormalClose) [GTree (CTag Inline (Left CCode) _ NormalClose) [GTree (CTagCode _) [] ]] |]
-                    [p| AbsCode _ |]
+       , $(normalSV [p| GTree (CTag Block (Left CPre) _ NormalClose) [GTree (CTag Inline (Left CCode) _ NormalClose) [GTree (CTagCode _) [] ]] |] [p| AbsCode _ |]
                     [p| GTree (CTag Block (Left CPre) _ NormalClose) [GTree (CTag Inline (Left CCode) _ NormalClose) [GTree (CTagCode _) [] ]] |])
          ==> $(update [p| GTree (CTag Block (Left CPre) _ NormalClose) [GTree (CTag Inline (Left CCode) _ NormalClose) [GTree (CTagCode someCode) [] ]] |]
                       [p| AbsCode someCode |]
@@ -133,27 +138,38 @@ blockBX =
 
        , $(adaptiveSV [p| _ |] [p| AbsCode _ |])
          ==> \_ _ -> GTree (CTag Block (Left CPre) [] NormalClose)
-                           [GTree (CTag Inline (Left CCode) [] NormalClose) [ GTree (CTagText InlineText (Right "")) [] ]]
+                           [GTree (CTag Inline (Left CCode) [] NormalClose) [ GTree (CTagCode "") [] ]]
        ]
   where --setextLineBX = emb (\s -> if head s == '=' then 1 else 2)
                           --(\line level -> replicate (length line) (if level == 1 then '=' else '-'))
-        createInline = const $ GTree (CTagText InlineText (Right "hehe")) []
+
+
+
+craeteBlock :: AbsBlock -> GTree CTag
+craeteBlock v = case v of
+  AbsPara _ -> GTree (CTag Block (Left CPara) [] NormalClose) []
+  AbsHeading _ _ -> GTree (CTag Block (Left (CHead 1)) [] NormalClose) []
+  AbsUnorderedList _ -> GTree (CTag Block (Left CUnorderedList) [] NormalClose) []
+  AbsOrderedList _ -> GTree (CTag Block (Left COrderedList) [] NormalClose) []
+  AbsBlockQuote _ -> GTree (CTag Block (Left CBlockQuote) [] NormalClose) []
+  AbsCode _ -> GTree (CTag Block (Left CPre) [] NormalClose)
+                     [GTree (CTag Inline (Left CCode) [] NormalClose) [ GTree (CTagCode "") [] ]]
 
 
 --createListItem = undefined
 createListItem :: AbsListItem -> GTree CTag
-createListItem (AbsUnorderedListItem _) = GTree (CTag Block (Left CUnorderedList) [] NormalClose) []
-createListItem (AbsOrderedListItem _)   = GTree (CTag Block (Left COrderedList)   [] NormalClose) []
+createListItem (AbsUnorderedListItem _) = GTree (CTag Block (Left CListItem) [] NormalClose) []
+createListItem (AbsOrderedListItem _)   = GTree (CTag Block (Left CListItem) [] NormalClose) []
 
 -- other text not handled. so error occured.
 unorderedListItemBX :: BiGUL (GTree CTag) AbsListItem
 unorderedListItemBX = $(update [p| GTree (CTag Block (Left CListItem) _ _) blocks |] [p| AbsUnorderedListItem blocks |]
-                               [d| blocks = (filterLens isSupportedNode) `Compose` blockListBX |])
+                               [d| blocks = blockListBX |])
 
 --orderedListItemBX = undefined
 orderedListItemBX :: BiGUL (GTree CTag) AbsListItem
 orderedListItemBX = $(update [p| GTree (CTag Block (Left CListItem) _ _ ) blocks |] [p| AbsOrderedListItem blocks |]
-                             [d| blocks = (filterLens isSupportedNode) `Compose` blockListBX |])
+                             [d| blocks = blockListBX |])
 
 
 inlineBX :: BiGUL (GTree CTag) AbsInline
@@ -227,6 +243,9 @@ inlineBX =
          ==> $(update [p| attrs2 |] [p| attrs2 |] [d| attrs2 = replaceAltAndDest |])
 
 
+       , $(adaptiveSV [p| _ |] [p| AbsStr " " |])
+         ==> \_ _ -> GTree (CTagText InlineText (Left " ")) []
+
        , $(adaptiveSV [p| _ |] [p| AbsStr _ |])
          ==> \_ _ -> GTree (CTagText InlineText (Right "")) []
 
@@ -243,9 +262,6 @@ inlineBX =
        , $(adaptiveSV [p| _ |] [p| AbsHardbreak |])
          ==> \s v -> GTree (CTag Inline (Left CBr) [] NoClose) []
 
-       , $(adaptiveSV [p| _ |] [p| AbsStr " " |])
-         ==> \_ _ -> GTree (CTagText InlineText (Left " ")) []
-
        , $(adaptiveSV [p| _ |] [p| AbsInlineCode _ |])
          ==> \_ _ -> GTree (CTag Inline (Left CCode) [] NormalClose) [GTree (CTagCode "") []]
 
@@ -255,12 +271,25 @@ inlineBX =
        , $(adaptiveSV [p| _ |] [p| AbsImage _ _ |])
          ==> \_ _ -> GTree (CTag Inline (Left CImg) [] NoClose) []
        ]
-  where createInline = const $ (GTree (CTagText InlineText (Right "")) [])
+
+
+createInline :: AbsInline -> GTree CTag
+createInline v = case v of
+  AbsStr " " -> GTree (CTagText InlineText (Left " ")) []
+  AbsStr _ -> GTree (CTagText InlineText (Right "newly created text to be replaced")) []
+  AbsEmph _ -> GTree (CTag Inline (Left CEmph) [] NormalClose) []
+  AbsStrong _ -> GTree (CTag Inline (Left CStrong) [] NormalClose) []
+  AbsSoftbreak -> GTree (CTagText InlineText (Left "\n")) []
+  AbsHardbreak -> GTree (CTag Inline (Left CBr) [] NoClose) []
+  AbsInlineCode _ -> GTree (CTag Inline (Left CCode) [] NormalClose) [GTree (CTagCode "") []]
+  AbsLink _ _  -> GTree (CTag Inline (Left CLink) [] NormalClose) []
+  AbsImage _ _ -> GTree (CTag Inline (Left CImg) [] NoClose) []
+
 
 replaceAltAndDest :: BiGUL [Either Spaces Attribute] (String, String)
 replaceAltAndDest =
   emb (foldr foldrGetF ("",""))
-      (\s (alt, src) -> foldr (foldrPutF alt src) [] s )
+      (\s (alt, src) -> foldr (foldrPutF alt src) [] (Right (Attribute "src" "=" src): Right (Attribute "alt" "=" alt):s))
   where foldrGetF e (alt, src) = case e of
             Left _ -> (alt, src)
             Right (Attribute "src" _ src') -> (alt, dropQuotes src')
@@ -268,10 +297,11 @@ replaceAltAndDest =
             Right _                     -> (alt, src)
         foldrPutF alt src x xs = case x of
             Left _ -> x:xs
-            Right (Attribute "src" eq _) -> Right (Attribute "src" eq src) : xs
-            Right (Attribute "alt" eq _) -> Right (Attribute "alt" eq alt) : xs
+            Right (Attribute "src" eq _) -> Right (Attribute "src" eq (addQuotes "" src)) : xs
+            Right (Attribute "alt" eq _) -> Right (Attribute "alt" eq (addQuotes "" alt)) : xs
             Right _ -> x : xs
 
+-- search for href attribute. and replace it with the view
 replaceHref :: BiGUL [Either Spaces Attribute] String
 replaceHref =
   Case  [ $(normalSV [p| Left _ : _ |] [p| _ |] [p| Left _ : _ |]) $
@@ -281,6 +311,10 @@ replaceHref =
                $(update [p| Right (Attribute _ _ url) : _ |] [p| url |] [d| url = replace_SourceInQuote|])
         , $(normalSV [p| Right _:_ |] [p| _ |] [p| Right _:_ |]) $
             $(update [p| _:xs |] [p| xs |] [d| xs = replaceHref |])
+
+        , $(normalSV [p| [] |] [p| [] |] [p| [] |]) $
+            $(update [p| [] |] [p| [] |] [d|  |])
+        , $(adaptiveSV [p| [] |] [p| _:_ |]) (\_ v -> [Right (Attribute "href" "=" (addQuotes "" v))] )
         ]
 
 
@@ -301,5 +335,4 @@ addQuotes s v = case s of
   '\'':_  -> "'" ++ v ++ "'"
   '"':_   -> "\"" ++ v ++ "\""
   _       -> "\"" ++ v ++ "\""  -- default case.
-
 

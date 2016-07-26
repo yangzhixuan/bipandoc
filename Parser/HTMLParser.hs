@@ -356,6 +356,7 @@ prtHTML (GTree (CTag _ tn sOrAs NormalClose) children) = wrapTagO (prtCTagName t
 prtHTML (GTree (CTagText _ eTxt) []) = either id id eTxt
 prtHTML (GTree (CTagComment cmt) []) = "<!--" ++ cmt ++ "-->"
 prtHTML (GTree (CTagScript txt) []) = txt
+prtHTML (GTree (CTagCode code) []) = code
 
 flatSorAs :: [Either Spaces Attribute] -> String
 flatSorAs [] = ""
