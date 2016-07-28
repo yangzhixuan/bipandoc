@@ -4,7 +4,7 @@ BiEditor: Collaborative Document Editing under Different Formats with Bidirectio
 --------------
 Research Proposal
 
-###Motivation
+### Motivation
 
 **Collaborative editing**: more than one people edit a document at the same time. However there is only one copy of the document, collaborators also have to use the same format (for example, markdown). If we want to enable collaborators to use different formats *at the same time*, a simple idea is to synchronize between formats with a document converter like pandoc.
 
@@ -15,7 +15,7 @@ Research Proposal
 **Solution**: we can use **put** action for rendering documents so that the *stylish* information in the original documents can be preserved. In order to ensure that the **put** action and **get** action are consistent, we can use BiGUL. 
 
 
-###Framework
+### Framework
 
 * (Format 1) \<-ISO-\> (Concrete ST 1) \<S---V\> (Core AST)
 
@@ -29,7 +29,7 @@ Explanation:
 * Concrete ST (CST): isomorphic to plain text format; Besides core information, it also contains *stylish information* (for example, code indentation, meta info, ...)
 * Isomorphism between text format and its CST: its consistency can also be checked (e.g. written in BiGUL)
 
-###Plan
+### Plan
 
 1.  Design the CST structure and **(a)** A Markdown CST parser and printer or **(b)** a bidirectional Markdown CST parser.
    

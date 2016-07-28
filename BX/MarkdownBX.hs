@@ -71,15 +71,24 @@ blockBX =
          , $(normalSV [p| IndentedCode _ |] [p| AbsCode _ |] [p| IndentedCode _ |])
            ==> $(update [p| IndentedCode codes |] [p| AbsCode codes |]
                         [d| codes = codeBX |])
+
+          -- FIXME: fencedCode with zero element
+         , $(normalSV [p| FencedCode _ _ _ _ _ _ _ |] [p| AbsCode _ |] [p| FencedCode _ _ _ _ _ _ _ |])
+           ==> $(update [p| FencedCode _ _ _ codes _ _ _ |] [p| AbsCode codes |]
+                        [d| codes = codeBX |])
+
          , $(adaptiveSV [p| _ |] [p| AbsCode _ |])
-           ==> \s v -> IndentedCode [CodeLine DefaultIndent ""]  -- note that codeBX assume IndentedCode has at least one element
+           ==> \s v -> IndentedCode []
          ]
          where atxBX = emb length (\s v -> replicate v '#')
                setextLineBX = emb (\s -> if head s == '=' then 1 else 2)
                                   (\line level -> replicate (length line) (if level == 1 then '=' else '-'))
+               -- codeBX = emb (concatMap (\(CodeLine ind code) -> code))
+               --              (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind (vc ++ "\n"))
+               --                           (zip (s ++ repeat (head s)) (lines v)))
                codeBX = emb (concatMap (\(CodeLine ind code) -> code))
                             (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind (vc ++ "\n"))
-                                         (zip (s ++ repeat (head s)) (lines v)))
+                                         (zip (s ++ repeat (CodeLine DefaultIndent "\n")) (lines v)))
                createInline = const $ Str ""
 
 

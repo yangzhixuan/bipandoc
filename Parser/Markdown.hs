@@ -32,6 +32,7 @@ data Block = Para Indent [Inline] -- indent, inlines
            | BlockQuote Indent String [Block] -- indent of first block, '>' of first block, blocks
            | BlankLine Indent String -- indent, spaces
            | IndentedCode [CodeLine]
+           | FencedCode Indent String String [CodeLine] Indent String String -- indent, fence, spaces, code lines, indent, fence, spaces
     deriving (Show, Eq)
 
 data ListItem = UnorderedListItem Indent String Char String [Block]
@@ -77,17 +78,23 @@ printIndent :: String -> Indent -> String
 printIndent defaultIndent DefaultIndent = defaultIndent
 printIndent defaultIndent (Indent s) = s
 
+-- For block elements created by BX, we insert a blankline before it
+insertBlankLine defaultIndent DefaultIndent = defaultIndent ++ "\n"
+insertBlankLine defaultIndent (Indent _) = ""
+
 printBlock :: String -> Bool -> Block -> String
 printBlock defaultIndent skipFirstIndent block = case block of
     (BlankLine ind s) -> pInd ind ++ s
     (Para ind inls) -> pInd ind ++ (concatMap (printInline defaultIndent) inls) ++ "\n"
     (ATXHeading ind atxs sps heading sps2) -> pInd ind ++ atxs ++ sps ++ (concatMap (printInline defaultIndent) heading) ++ sps2
-    (SetextHeading ind heading sps2 ind2 unls sps) -> pInd ind ++ (concatMap (printInline defaultIndent) heading) ++ sps2 ++ printIndent defaultIndent ind2 ++ unls ++ sps
+    (SetextHeading ind heading sps2 ind2 unls sps) -> pInd ind ++ (concatMap (printInline defaultIndent) heading) ++ sps2 ++ pInd2 ind2 ++ unls ++ sps
     (UnorderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
     (OrderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
     (BlockQuote ind str (b1:bs)) -> pInd ind ++ str ++ printBlock (defaultIndent ++ ">") True b1 ++ (concatMap (printBlock (defaultIndent ++ ">") False) bs)
     (IndentedCode codes) -> concatMap (printCodeLine (defaultIndent ++ "    ")) codes
-    where pInd ind = if skipFirstIndent then "" else printIndent defaultIndent ind
+    (FencedCode i1 f1 s1 codes i2 f2 s2) -> (pInd i1) ++ f1 ++ s1 ++ concatMap (printCodeLine (defaultIndent ++ "    ")) codes ++ pInd2 i2 ++ f2 ++ s2
+    where pInd ind = if skipFirstIndent then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
+          pInd2 ind = printIndent defaultIndent ind
 
 printInline :: String -> Inline -> String
 printInline defaultIndent inline = case inline of 
@@ -155,6 +162,7 @@ block =
         unorderedList,
         blockQuote,
         indentedCode,
+        fencedCode,
         paragraph
     ]
 
@@ -254,6 +262,31 @@ indentedCode :: Parsec String ParserStatus Block
 indentedCode = try $ do
     code <- many1 indentedCodeLine
     return $ IndentedCode code
+
+fencedCodeLine :: Parsec String ParserStatus CodeLine
+fencedCodeLine = try $ do
+    ind <- indentation
+    code <- manyTill anyChar newline
+    return $ CodeLine (Indent ind) (code ++ "\n")
+
+fenceChars = "`~"
+
+fencedCode :: Parsec String ParserStatus Block
+fencedCode = try $ do
+    ind1 <- indentation
+    fenceChar <- oneOf fenceChars
+    char fenceChar
+    char fenceChar
+    fenceCharRest <- many (char fenceChar)
+    sp1 <- many (satisfy (\c -> c /= '\n'))
+    newline
+    let fence = fenceChar : fenceChar : fenceChar : fenceCharRest
+    code <- many (notFollowedBy (indentation >> string fence >> spaceChars >> newline) >> fencedCodeLine)
+    ind2 <- indentation
+    fence2 <- string fence
+    sp2 <- spaceChars
+    newline
+    return $ FencedCode (Indent ind1) fence sp1 code (Indent ind2) fence2 sp2
 
 -- | Parses a paragraph.
 --
