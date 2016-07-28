@@ -91,7 +91,7 @@ printBlock defaultIndent skipFirstIndent block = case block of
     (UnorderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
     (OrderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
     (BlockQuote ind str (b1:bs)) -> pInd ind ++ str ++ printBlock (defaultIndent ++ ">") True b1 ++ (concatMap (printBlock (defaultIndent ++ ">") False) bs)
-    (IndentedCode codes) -> concatMap (printCodeLine (defaultIndent ++ "    ")) codes
+    (IndentedCode codes) -> (if length codes > 0 && (\(CodeLine ind _) -> ind == DefaultIndent) (head codes) then "\n" else "") ++ concatMap (printCodeLine (defaultIndent ++ "    ")) codes
     (FencedCode i1 f1 s1 codes i2 f2 s2) -> (pInd i1) ++ f1 ++ s1 ++ concatMap (printCodeLine (defaultIndent ++ "    ")) codes ++ pInd2 i2 ++ f2 ++ s2
     where pInd ind = if skipFirstIndent then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
           pInd2 ind = printIndent defaultIndent ind

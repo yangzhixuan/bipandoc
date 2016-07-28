@@ -2,7 +2,6 @@
 {-# Language TemplateHaskell, TypeFamilies #-}
 module BX.BXHelpers where
 
-import GHC.Generics
 import Generics.BiGUL
 import Data.List
 import Generics.BiGUL.Interpreter
@@ -258,64 +257,3 @@ groupLens = (align (const True) (\x y -> x == y) (Replace) id (const Nothing)) `
 
 sortLens :: BiGUL [(Int,Int)] [(Int ,Int)]
 sortLens = Skip (\x -> sortBy (\x y -> compare (fst x) (fst y)) x)
-
-
-type Picture = Int
-type Tag = String
-type Name = String
-
-data FS = Directory Name [FS]
-        | File Name Picture
-        deriving (Show, Eq)
-
-type Web = [(Picture, [Tag])]
-
-data Cont = FromList [FS] | Comp Cont Cont deriving (Show, Eq)
-
-deriveBiGULGeneric ''FS
-deriveBiGULGeneric ''Cont
-
-
-catLens :: BiGUL Cont [Picture]
-catLens = Case
-  [ $(normal [| \s [] -> isEmpty s |] [| \s -> isEmpty s |])
-    ==> $(rearrV [| \[] -> () |])
-         (Skip (const ()))
-
-  , $(adaptiveSV [p| _ |] [p| [] |])
-    ==> (\s v -> makeEmptyCont s)
-
-  , $(adaptiveSV [p| FromList [] |] [p| v:vs |])
-    ==> (\s v -> FromList [File "unnamed" 0])
-
-  , $(normalSV [p| FromList ((File _ _):ss) |] [p| (v:vs) |]
-               [p| FromList ((File _ _):ss) |])
-    ==> $(rearrS [| \(FromList ((File _ p1):rest)) -> (p1, FromList rest) |])
-        $(update [p| (p1, rest) |] [p| (p1:rest) |] [d| p1 = Replace; rest = catLens |])
-
-  , $(normalSV [p| FromList ((Directory _ _):ss) |] [p| (v:vs) |]
-               [p| FromList ((Directory _ _):ss) |])
-    ==> $(rearrS [| \(FromList ((Directory _ fs):rest)) -> Comp (FromList fs) (FromList rest) |])
-        catLens
-
-  , $(normalSV [p| Comp (FromList []) cont |] [p| _ |]
-               [p| Comp (FromList []) cont |])
-    ==> $(rearrS [| \(Comp _ cont) -> cont |]) catLens
-
-  , $(normalSV [p| Comp (FromList ((File _ _):ss)) _ |] [p| (v:vs) |]
-               [p| Comp (FromList ((File _ _):ss)) _ |])
-    ==> $(rearrS [| \(Comp (FromList ((File a p1):rest)) cont) -> (p1, Comp (FromList rest) cont) |])
-        $(update [p| (p1, rest) |] [p| (p1:rest) |] [d| p1 = Replace; rest = catLens |])
-
-  , $(normalSV [p| Comp (FromList ((Directory _ _):ss)) _ |] [p| (v:vs) |]
-               [p| Comp (FromList ((Directory _ _):ss)) _ |])
-    ==> $(rearrS [| \(Comp (FromList ((Directory _ fs):rest)) cont) -> Comp (FromList fs) (Comp (FromList rest) cont) |])
-        catLens
-  ]
-  where makeEmptyCont (FromList _) = FromList []
-        makeEmptyCont (Comp a b) = Comp (makeEmptyCont a) (makeEmptyCont b)
-        isEmpty (FromList l) = null l
-        isEmpty (Comp a b) = isEmpty a && isEmpty b
-
-catLens' :: BiGUL FS [Picture]
-catLens' = $(rearrS [| \(Directory _ fs) -> FromList fs |]) catLens
