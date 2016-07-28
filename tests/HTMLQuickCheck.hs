@@ -80,10 +80,10 @@ genBLOCKCODE =
   genSafeString >>= \s -> return $
       GTree (CTag Block (Left CPre) [] NormalClose)
             [GTree (CTag Block (Left CCode) [] NormalClose)
-                   [GTree (CTagCode s) []]]
+                   [GTree (CTagCode (s ++ "\n")) []]]
 
 genINLINECODE :: Gen (GTree CTag)
-genINLINECODE = genSafeString >>= (\s -> return $ GTree (CTag Block (Left CCode) [] NormalClose) [GTree (CTagCode s) []])
+genINLINECODE = genSafeString >>= (\s -> return $ GTree (CTag Block (Left CCode) [] NormalClose) [GTree (CTagCode (s  ++ "\n")) []])
 
 genUL' :: Int -> Gen (GTree CTag)
 genUL' n = do {lis <- resize 8 $ listOf1 (genLI' (n `div` 2) ); return $ GTree (CTag Block (Left CUnorderedList) [] NormalClose) lis}
@@ -121,14 +121,11 @@ genAttributeWithSpace = do
           val <- stringInQuote
           return $ Attribute name " = " val
 
-genInline :: Gen (GTree CTag)
-genInline = sized genInline'
-
-
 genInline' :: Int -> Gen (GTree CTag)
 genInline' 0 = return $ GTree (CTagText InlineText (Left "a space ")) []
 genInline' n | n > 0 =
   frequency [(6, genInlineText)
+            ,(1, genComments)
             ,(1, genSTRONG' (n `div` 4))
             ,(1, genEMPH' (n `div` 4))
             ,(1, genINLINECODE)

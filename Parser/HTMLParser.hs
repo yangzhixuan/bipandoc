@@ -116,7 +116,7 @@ deriveBiGULGeneric ''Attribute
 
 
 isSupportedName :: Either SupportedName OtherName -> Bool
-isSupportedName (Right "body") = True
+isSupportedName (Right "body") = True -- an ad hoc trick for the filter lens on gtree.
 isSupportedName (Right _) = False
 isSupportedName (Left t) = maybe False (const True) (Map.lookup (prtSupportedName t) supportedName)
 
