@@ -25,7 +25,6 @@ cstPrintParse = quickCheckWith testArgs prop_CSTPrintParse
 html_md_html_round :: IO ()
 html_md_html_round = quickCheckWith testArgs prop_HTML_MD_HTML_round
 
-
 prop_HTML_MD_HTML_round :: HTMLDoc -> Bool
 prop_HTML_MD_HTML_round htmlCST =
   let htmlTXT = prtDocument htmlCST
@@ -39,6 +38,33 @@ prop_HTML_MD_HTML_round htmlCST =
   in  htmlTXT == htmlTXT'
   where types = htmlCST :: HTMLDoc
         emptyMD = MarkdownDoc []
+
+
+test2 :: HTMLDoc -> IO ()
+test2 htmlCST = do
+  let ast     = maybe (error "error in (get htmlBX)") id (get htmlBX htmlCST)
+  putStrLn "original AST\n"
+  putPretty ast
+  let mdCST   = maybe (error "error in (put markdownBX)") id (put markdownBX emptyMD ast)
+  putStrLn "\nmarkdown CST:\n"
+  putPretty mdCST
+
+  let mdTXT   = printMarkdown mdCST
+  putStrLn "\nmarkdown text:\n"
+  putStrLn mdTXT
+
+  let mdCST'  = parseMarkdown mdTXT
+  putStrLn "\nmarkdown CST (new):\n"
+  putPretty mdCST'
+
+  let ast'    = maybe (error "error in (get markdownBX)") id (get markdownBX mdCST')
+  putStrLn "\nAST (new):\n"
+  putPretty ast'
+  where
+        emptyMD = MarkdownDoc []
+
+
+
 
 prop_CSTPrintParse :: HTMLDoc -> Bool
 prop_CSTPrintParse htmlDoc = parseHTML (prtDocument htmlDoc) == htmlDoc
