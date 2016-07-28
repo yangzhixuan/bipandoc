@@ -7,9 +7,10 @@ module Parser.HTMLParser where
 
 import Text.Megaparsec
 import Data.Char (isSpace)
+import Data.Maybe (fromJust, fromMaybe)
 import Control.Monad (liftM, replicateM)
 import qualified Data.List.NonEmpty as DLN ( NonEmpty((:|)) )
-import Data.Map as Map (fromList, Map, lookup, union, singleton)
+import Data.Map as Map (fromList, Map, lookup, union, singleton, keys, findWithDefault)
 import Data.List (groupBy)
 
 import GHC.Generics
@@ -233,13 +234,27 @@ pTagClose = do {string "</"; tn <- pTagName; char '>'; return $ tn} <?> "pTagClo
 trimCloseTag :: String -> String
 trimCloseTag x = drop 2 . take (length x - 1) $ x
 
+escPairs = [("lt", '<'), ("gt", '>'), ("amp", '&')] 
+escMap = Map.fromList escPairs
+unescMap = Map.fromList (map (\(x,y) -> (y,x)) escPairs)
+
+unEscape :: String -> String
+unEscape = concatMap (\c -> maybe [c] (\s -> "&" ++ s ++ ";") (Map.lookup c unescMap))
+
+pEscapedChar :: PU Char
+pEscapedChar = try $ do
+    char '&'
+    s <- choice(map (try . string) (map fst escPairs))
+    char ';'
+    return $ fromJust (Map.lookup s escMap)
+
 pTagText :: PU HTML
 pTagText = do
   c <- lookAhead (anyChar)
   case c of
     '<' -> unexpected (Label ((DLN.:|) '<' []) )
     _   -> do
-          text <- someTill anyChar (lookAhead (string "<"))
+          text <- someTill (pEscapedChar <|> anyChar) (lookAhead (string "<"))
           return $ GTree (CTagText NotDecidedTextMark (Right text)) []
   <?> "pTagText"
 
@@ -308,7 +323,7 @@ pTagCode = do
   CTag _ (Left tn) sOrA _ <- pTagOpen
   if tn == CCode
     then do
-    code <- someTill anyChar (string "</code>")
+    code <- someTill (pEscapedChar <|> anyChar) (string "</code>")
     return $ GTree (CTag Inline (Left CCode) sOrA NormalClose) [GTree (CTagCode code) []]
     else unexpected (Label ((DLN.:|) 'c' []) )
 
@@ -354,10 +369,10 @@ prtHTML :: HTML -> String
 prtHTML (GTree (CTag _ tn sOrAs SelfClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ "/>"
 prtHTML (GTree (CTag _ tn sOrAs NoClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ ">"
 prtHTML (GTree (CTag _ tn sOrAs NormalClose) children) = wrapTagO (prtCTagName tn ++ flatSorAs sOrAs) ++ concatMap prtHTML children ++ wrapTagC (prtCTagName tn)
-prtHTML (GTree (CTagText _ eTxt) []) = either id id eTxt
+prtHTML (GTree (CTagText _ eTxt) []) = either id unEscape eTxt
 prtHTML (GTree (CTagComment cmt) []) = "<!--" ++ cmt ++ "-->"
 prtHTML (GTree (CTagScript txt) []) = txt
-prtHTML (GTree (CTagCode code) []) = code
+prtHTML (GTree (CTagCode code) []) = unEscape code
 
 flatSorAs :: [Either Spaces Attribute] -> String
 flatSorAs [] = ""
