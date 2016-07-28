@@ -53,13 +53,11 @@ blockListBX =
               $(rearrS [| \( (GTree (CTag Block (Left CDiv) attrs NormalClose) (c:contents)) : blocks) ->
                            (c, (GTree (CTag Block (Left CDiv) attrs NormalClose) contents) : blocks) |]) $
                 $(update [p| (c, cbs) |] [p| c:cbs |]
-                         -- problematic. c may be a comment node which should be filtered out.
                          [d| c = blockBX; cbs = blockListBX |])
 
         -- drop the empty "div", etc.
         , $(normalSV [p| (GTree (CTag Block (Left CDiv) _ NormalClose) []) : _ |] [p| _ |]
                      [p| (GTree (CTag Block (Left CDiv) _ NormalClose) []) : _ |] ) $
-            --  $(rearrS [| \( (GTree (CTag Block (Left CDiv) attrs NormalClose) []) : blocks) -> blocks  |]) $
             $(rearrS [| \ (blk : blocks) -> blocks  |]) $
                 $(update [p| cbs |] [p| cbs |] [d| cbs = blockListBX |])
 
