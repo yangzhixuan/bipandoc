@@ -116,7 +116,7 @@ deriveBiGULGeneric ''Attribute
 
 
 isSupportedName :: Either SupportedName OtherName -> Bool
-isSupportedName (Right "body") = True
+isSupportedName (Right "body") = True -- an ad hoc trick for the filter lens on gtree.
 isSupportedName (Right _) = False
 isSupportedName (Left t) = maybe False (const True) (Map.lookup (prtSupportedName t) supportedName)
 
@@ -332,6 +332,7 @@ spaceChars :: PU String
 spaceChars = many spaceChar <?> "spaceChars"
 
 
+-- merge adjacent spaces into a sequence of spaces
 mergeSpaces :: [Either Spaces Attribute] -> [Either Spaces Attribute]
 mergeSpaces (Left s : Left " " : xs) = mergeSpaces $ Left (s ++ " ") : xs
 mergeSpaces (s : Right a : xs)  = s : Right a : mergeSpaces xs
@@ -416,8 +417,11 @@ refine2 :: GTree CTag -> [GTree CTag]
 refine2 (GTree (CTagText NotDecidedTextMark eTxt) []) = concatMap divideAtLineBreak . map refine4 . refine3 . fromRight $ eTxt
 --   eg:  (GTree (CTag Inline CStrong attrs NormalClose) subtext...)
 refine2 (GTree (CTag Inline tn attrs mk1) subtags) = [(GTree (CTag Inline tn attrs mk1)) (concatMap refine2 subtags)]
-refine2 c@(GTree (CTagCode _) []) = [c]
-refine2 t = error $ "unexpected tag. tag should be text tag or inline tag: " ++ show t
+refine2 c = [c]
+--refine2 c@(GTree (CTagCode _) []) = [c]
+--refine2 c@(GTree (CTagComment _) []) = [c]
+--refine2 s@(GTree )
+--refine2 t = error $ "unexpected tag. tag should be text tag or inline tag: " ++ show t
 
 
 -- separate a string by spaces, and make each substring a GTree (CTagText InlineText ...) []
@@ -432,19 +436,8 @@ refine4 :: GTree CTag -> GTree CTag
 refine4 (GTree (CTagText InlineText (Right ss@(spc:spcs))) []) =
   if isSpace spc then GTree (CTagText InlineText (Left ss)) [] else GTree (CTagText InlineText (Right ss)) []
 
---divideAtLineBreak :: GTree CTag -> [GTree CTag]
---divideAtLineBreak (GTree (CTagText InlineText (Left (s:sps))) []) = if s == '\n'
---  then GTree (CTagText InlineText (Left "\n")) [] : divideAtLineBreak (GTree (CTagText InlineText (Left sps)) [])
---  else divideAtLineBreak_ (s:sps) "" []
---  where divideAtLineBreak_ :: String -> String -> [GTree CTag] -> [GTree CTag]
---        divideAtLineBreak_ [] acc res = reverse res
---        divideAtLineBreak_ (s:sps) acc res = if s == '\n'
---          then divideAtLineBreak_ sps "" (GTree (CTagText InlineText (Left (reverse acc))) [] : GTree (CTagText InlineText (Left "\n")) [] : divideAtLineBreak (GTree (CTagText InlineText (Left sps)) []) )
---          --then divideAtLineBreak_ sps "" (GTree (CTagText InlineText (Left "\n")) [] : GTree (CTagText InlineText (Left (reverse acc))) [] : res)
---          else divideAtLineBreak_ sps (s:acc) res
---divideAtLineBreak gt@(GTree (CTagText InlineText (Right _)) []) = [gt]
-
-
+-- given a list of space characters such as " ", "\n", "\t"... break it into several parts at "\n".
+-- since "\n" is treated as SoftBreak.
 divideAtLineBreak :: GTree CTag -> [GTree CTag]
 divideAtLineBreak gt@(GTree (CTagText InlineText (Right _)) []) = [gt]
 divideAtLineBreak (GTree (CTagText InlineText (Left spaces)) []) = divideAtLineBreak_ spaces
@@ -472,13 +465,15 @@ defaultHTML = "<!DOCTYPE HTML>\n<html>\n<head>\n</head>\n<body>\n</body>\n</html
 
 t1 :: IO ()
 t1 = do
-  i <- readFile "1.html"
+  i <- readFile "test111.html"
   let o  = either (error. show) id (parse parseDoc "1.html" i)
       oo = refineDoc o
   putStrLn "show:"
   putStrLn (show oo)
   putStrLn "print back:"
   putStrLn (prtDocument oo)
+  putStrLn "\neuql?\n"
+  putStrLn (show (prtDocument oo == i))
 
 t1w :: IO ()
 t1w = do
