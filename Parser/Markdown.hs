@@ -114,11 +114,11 @@ printInline defaultIndent inline = case inline of
 
 printListItem :: String -> Bool -> ListItem -> String
 printListItem defaultIndent skipFirstIndent (UnorderedListItem ind sps bullet sps2 (it1:items)) = pInd ind ++ sps ++ [bullet] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
-    where pInd ind = if skipFirstIndent then "" else printIndent defaultIndent ind
+    where pInd ind = if skipFirstIndent then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
           newIndent = defaultIndent ++ " " ++ sps2
 
 printListItem defaultIndent skipFirstIndent (OrderedListItem ind sps number dot sps2 (it1:items)) = pInd ind ++ sps ++ number ++ [dot] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
-    where pInd ind = if skipFirstIndent then "" else printIndent defaultIndent ind
+    where pInd ind = if skipFirstIndent then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
           newIndent = defaultIndent ++ " " ++ sps2
 
 printCodeLine :: String -> CodeLine -> String
