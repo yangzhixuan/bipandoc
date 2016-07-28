@@ -417,8 +417,11 @@ refine2 :: GTree CTag -> [GTree CTag]
 refine2 (GTree (CTagText NotDecidedTextMark eTxt) []) = concatMap divideAtLineBreak . map refine4 . refine3 . fromRight $ eTxt
 --   eg:  (GTree (CTag Inline CStrong attrs NormalClose) subtext...)
 refine2 (GTree (CTag Inline tn attrs mk1) subtags) = [(GTree (CTag Inline tn attrs mk1)) (concatMap refine2 subtags)]
-refine2 c@(GTree (CTagCode _) []) = [c]
-refine2 t = error $ "unexpected tag. tag should be text tag or inline tag: " ++ show t
+refine2 c = [c]
+--refine2 c@(GTree (CTagCode _) []) = [c]
+--refine2 c@(GTree (CTagComment _) []) = [c]
+--refine2 s@(GTree )
+--refine2 t = error $ "unexpected tag. tag should be text tag or inline tag: " ++ show t
 
 
 -- separate a string by spaces, and make each substring a GTree (CTagText InlineText ...) []

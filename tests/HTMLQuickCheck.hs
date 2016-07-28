@@ -199,6 +199,3 @@ instance Arbitrary HTMLDoc where
     return . parseHTML . prtDocument $ HTMLDoc " " "<!DOCTYPE HTML>" "\n" html "\n"
 
 
-
-
-
