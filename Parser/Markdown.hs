@@ -211,7 +211,7 @@ atxHeading = try $ do
 
     atx <- manyRange 1 6 '#'
     spaces <- spaceChars
-    heading <- many1 ((notFollowedBy (spaceChars >> newline)) >> inline)
+    heading <- many1 ((notFollowedBy (softbreak <|> hardbreak)) >> inline)
     sps2 <- spaceChars
     newline
     return $ ATXHeading (Indent ind) atx spaces heading (sps2 ++ "\n")
@@ -224,7 +224,7 @@ setextHeading :: Parsec String ParserStatus Block
 setextHeading = try $ do
     lookAhead $ indentation >> anyLine >> indentation >> many1 (oneOf setextHChars) >> spaceChars >> newline
     ind <- indentation
-    heading <- many1 ((notFollowedBy (spaceChars >> newline)) >> inline)
+    heading <- many1 ((notFollowedBy (softbreak <|> hardbreak)) >> inline)
     sps2 <- spaceChars
     newline
     ind2 <- indentation
