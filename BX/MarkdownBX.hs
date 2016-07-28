@@ -72,7 +72,6 @@ blockBX =
            ==> $(update [p| IndentedCode codes |] [p| AbsCode codes |]
                         [d| codes = codeBX |])
 
-          -- FIXME: fencedCode with zero element
          , $(normalSV [p| FencedCode _ _ _ _ _ _ _ |] [p| AbsCode _ |] [p| FencedCode _ _ _ _ _ _ _ |])
            ==> $(update [p| FencedCode _ _ _ codes _ _ _ |] [p| AbsCode codes |]
                         [d| codes = codeBX |])
@@ -83,12 +82,17 @@ blockBX =
          where atxBX = emb length (\s v -> replicate v '#')
                setextLineBX = emb (\s -> if head s == '=' then 1 else 2)
                                   (\line level -> replicate (length line) (if level == 1 then '=' else '-'))
-               -- codeBX = emb (concatMap (\(CodeLine ind code) -> code))
-               --              (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind (vc ++ "\n"))
-               --                           (zip (s ++ repeat (head s)) (lines v)))
-               codeBX = emb (concatMap (\(CodeLine ind code) -> code))
-                            (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind (vc ++ "\n"))
-                                         (zip (s ++ repeat (CodeLine DefaultIndent "\n")) (lines v)))
+
+               -- FIXME Currently, we only allow code block terminating with a newline.
+               -- This should be finished after migrating to super-view framework.
+               codeBX = Case [ $(normal [| (\s v -> length v > 0 && last v /= '\n') |] [| const False |] )
+                                (Fail "markdown requires a newline as the last char in a code block"),
+
+                               $(normal [| \_ _ -> True |] [| const True |])
+                               ==> emb (concatMap (\(CodeLine ind code) -> code))
+                                        (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind (vc ++ "\n"))
+                                                     (zip (s ++ repeat (CodeLine DefaultIndent "\n")) (lines v)))
+                             ]
                createInline = const $ Str ""
 
 
