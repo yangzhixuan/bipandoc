@@ -15,8 +15,12 @@ import Test.QuickCheck
 import Generics.BiGUL
 import Generics.BiGUL.Interpreter
 
+
+
+
+
 testArgs :: Args
-testArgs = stdArgs {maxSuccess=60}
+testArgs = stdArgs {maxSuccess=50}
 
 
 cstPrintParse :: IO ()
@@ -90,7 +94,7 @@ genBlockTag' n | n > 0 =
             -- ,(1, return $ GTree (CTagText OtherText (Right "\n")) [])
             ,(1, resize 8 $ genDIV' (n `div` 2) )
             ,(1, genBLOCKCODE)
-            ,(1, resize 8 $ genP' (n `div` 2) )
+            ,(3, resize 8 $ genP' (n `div` 2) )
             ,(1, resize 8 $ genUL' (n `div` 2) )
             ,(1, resize 8 $ genOL' (n `div` 2) )
             ,(1, resize 8 $ genHEAD' (n `div` 2) )]
@@ -117,15 +121,18 @@ genUL' n = do {lis <- resize 8 $ listOf1 (genLI' (n `div` 2) ); return $ GTree (
 genOL' :: Int -> Gen (GTree CTag)
 genOL' n = do {lis <- resize 8 $ listOf1 (genLI' (n `div` 2) ); return $ GTree (CTag Block (Left COrderedList) [] NormalClose) lis}
 
+-- always wrap other elements inside <li> in a paragraph.
 genLI' :: Int -> Gen (GTree CTag)
 genLI' n = do
-  attrs <- listOf genAttributeWithSpace
+  attrs  <- resize 3 $ listOf genAttributeWithSpace
   blocks <- resize 4 $ listOf (genBlockTag' (n `div` 2) )
-  return $ GTree (CTag Block (Left CListItem) (concat attrs) NormalClose) blocks
+  return $ GTree (CTag Block (Left CListItem) (concat attrs) NormalClose) (map wrapInP blocks)
+  where wrapInP = \e -> GTree (CTag Block (Left CPara) [] NormalClose) [e]
+
 
 genP' :: Int -> Gen (GTree CTag)
 genP' n = do
-  attrs <- listOf genAttributeWithSpace
+  attrs   <- resize 3 $ listOf genAttributeWithSpace
   inlines <- resize 4 $ listOf1 (genInline' (n `div` 2) )
   return $ GTree (CTag Block (Left CPara) (concat attrs) NormalClose) inlines
 
@@ -145,10 +152,10 @@ genAttributeWithSpace = do
         otherAttr = do
           name <- genLowerString
           val <- stringInQuote
-          return $ Attribute name " = " val
+          return $ Attribute name "=" val
 
 genInline' :: Int -> Gen (GTree CTag)
-genInline' 0 = return $ GTree (CTagText InlineText (Left "a space ")) []
+genInline' 0 = return $ GTree (CTagText InlineText (Left (NormalSpace "a space "))) []
 genInline' n | n > 0 =
   frequency [(6, genInlineText)
             ,(1, genComments)
@@ -186,11 +193,11 @@ genBR = return $ GTree (CTag Inline (Left CBr) [] NoClose) []
 
 -- soft break. \n
 genSOFTBREAK :: Gen (GTree CTag)
-genSOFTBREAK = return $ GTree (CTagText InlineText (Left "\n")) []
+genSOFTBREAK = return $ GTree (CTagText InlineText (Left (NormalSpace "\n"))) []
 
 -- a sequence of spaces of length 1 - 10
 genSpaceInlineText :: Gen (GTree CTag)
-genSpaceInlineText = do {spaces <- genSpaces; return $ GTree (CTagText InlineText (Left spaces)) []}
+genSpaceInlineText = do {spaces <- genSpaces; return $ GTree (CTagText InlineText (Left (NormalSpace spaces))) []}
 
 
 
