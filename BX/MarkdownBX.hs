@@ -4,6 +4,7 @@ module BX.MarkdownBX where
 import Generics.BiGUL
 import Data.List
 import Data.Char
+import qualified Data.Text as Text
 import Generics.BiGUL.Interpreter
 import Generics.BiGUL.TH
 
@@ -12,12 +13,31 @@ import BX.BXHelpers
 import Abstract
 import Parser.Markdown
 
+import Debug.Trace
+
 markdownBX :: BiGUL MarkdownDoc AbsDocument
 markdownBX = $(update [p| MarkdownDoc x |] [p| AbsDocument x |]
                       [d| x = blockListBX |])
 
+checkBX :: BiGUL [AbsBlock] [AbsBlock]
+checkBX = 
+    Case [
+           $(normal [| \s v -> not (noConsecutiveLists v) |] [| const False |])
+           ==> Fail (trace "fail consecutive lists" "consecutive lists are not allowed in markdown")
+
+         , $(normalSV [p| _ |] [p| _ |] [p| _ |])
+           ==> Replace
+         ]
+    where noConsecutiveLists [] = True
+          noConsecutiveLists (x:[]) = True
+          noConsecutiveLists ((AbsUnorderedList _) : (AbsUnorderedList _) : xs) = False
+          noConsecutiveLists ((AbsOrderedList _) : (AbsOrderedList _) : xs) = False
+          noConsecutiveLists (x:xs) = noConsecutiveLists xs
+
+
+
 blockListBX :: BiGUL [Block] [AbsBlock]
-blockListBX = (filterLens nonBlankLines) `Compose` (mapLens blockBX createBlock)
+blockListBX = (filterLens nonBlankLines) `Compose` (mapLens blockBX createBlock) `Compose` checkBX
     where nonBlankLines (BlankLine _ _) = False
           nonBlankLines _ = True
           createBlock = const $ Para DefaultIndent []
@@ -77,7 +97,8 @@ blockBX =
                         [d| codes = codeBX |])
 
          , $(adaptiveSV [p| _ |] [p| AbsCode _ |])
-           ==> \s v -> IndentedCode []
+           --- ==> \s v -> IndentedCode []
+           ==> \s (AbsCode v) -> FencedCode DefaultIndent (generateFence v) "\n" [] DefaultIndent (generateFence v) "\n"
          ]
          where atxBX = emb length (\s v -> replicate v '#')
                setextLineBX = emb (\s -> if head s == '=' then 1 else 2)
@@ -94,6 +115,10 @@ blockBX =
                                                      (zip (s ++ repeat (CodeLine DefaultIndent "\n")) (lines v)))
                              ]
                createInline = const $ Str ""
+               generateFence str = tryFence "~~~"
+                 where tryFence s = if Text.isInfixOf (Text.pack s) (Text.pack str)
+                                       then tryFence ('~' : s)
+                                       else s
 
 
 createListItem :: AbsListItem -> ListItem
