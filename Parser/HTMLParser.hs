@@ -18,7 +18,7 @@ import Generics.BiGUL
 import Generics.BiGUL.TH
 
 
---import BX.BXHelpers
+import Parser.Markdown (putPretty)
 
 import Debug.Trace
 
@@ -36,9 +36,10 @@ type PU = Parsec Dec String
 
 data CTag =
     CTag TagMark CTagName [Either Spaces Attribute] CloseMark -- TagName [Spaces | Attributes]
-  | CTagText TextMark (Either ESpaces String)   -- ^ A text node. Only a text node with TextMark InlineText will be passed to AST.
-                                               -- An InlineText node will be further marked as (Left Spaces) or (Right String)
-                                               -- But in the parsing stage, we always firstly mark it as Right String.
+  | CTagText TextMark TextContents    -- ^ A text node. Only a text node with TextMark InlineText will be passed to AST.
+                                      -- An InlineText node will be further marked as (TM Spaces) or (TR String)
+                                      -- But in the parsing stage, we always firstly mark it as TR String.
+                                      -- OtherText node will only be distinguished as either (TL Entity) or (TR String).
   | CTagScript  String               -- ^ A script node
   | CTagComment String               -- ^ A comment
   | CTagCode    String               -- ^ verbatim code
@@ -49,7 +50,11 @@ data CloseMark = NormalClose | SelfClose | NoClose | NotDecidedCloseMark derivin
 data TagMark   = Block | Inline | NotDecidedTagMark      deriving (Show, Eq)
 data TextMark  = InlineText | OtherText | NotDecidedTextMark deriving (Show, Eq) -- text in block elements such as <p>, <h1>, pass to AST. | text outside block elements which will not be passed to AST.
 
-data ESpaces = EntitySpace1 | EntitySpace2 | NormalSpace String deriving (Show, Eq) -- &nbsp; or &#160; or a normal space
+data TextContents = TL Entity | TM Spaces | TR String deriving (Show, Eq)
+data Entity = EntitySpace1 | EntitySpace2 | EntityAnd1 | EntityAmp1 | EntityAmp2
+            | EntityLT1    | EntityLT2    | EntityGT1  | EntityGT2
+            deriving (Show, Eq)
+-- EntityXXX1 for &name;   EntityXXX2 for &#number;
 
 type CTagName = Either SupportedName OtherName
 type OtherName = String
@@ -115,7 +120,8 @@ deriveBiGULGeneric ''CloseMark
 deriveBiGULGeneric ''TagMark
 deriveBiGULGeneric ''TextMark
 deriveBiGULGeneric ''Attribute
-
+deriveBiGULGeneric ''TextContents
+deriveBiGULGeneric ''Entity
 
 isSupportedName :: Either SupportedName OtherName -> Bool
 isSupportedName (Right "body") = True -- an ad hoc trick for the filter lens on gtree.
@@ -145,13 +151,13 @@ parseDoc = do
   <?> "parseDoc"
 
 anyNode :: PU HTML
-anyNode = try pScriptTag <|>  try pTagCode <|> try pTagElement <|> try pTagComment <|> pEntitySpace <|> pTagText <?> "anyNode"
+anyNode = try pScriptTag <|>  try pTagCode <|> try pTagElement <|> try pTagComment <|> pTagText <?> "anyNode"
 
 pHTML :: PU HTML
 pHTML = do
   (CTag _ tn sOrA _) <- pTagOpen
   inner <- many anyNode
-  (string "</html>")
+  (string "</html>") <?> "expecting </html>"
   return $ GTree (CTag Block tn sOrA NormalClose) inner
   <?> "error in parsing html tag"
 
@@ -258,21 +264,31 @@ pEscapedChar = try $ do
     char ';'
     return $ fromJust (Map.lookup s escMap)
 
+--pTagText :: PU HTML
+--pTagText = do
+--  c <- lookAhead (anyChar)
+--  case c of
+--    '<' -> unexpected (Label ((DLN.:|) '<' []) )
+--    _   -> do
+--          text <- someTill (pEscapedChar <|> anyChar) (lookAhead (string "<" <|> string ">" <|> string "&") )
+--          return $ GTree (CTagText NotDecidedTextMark (Right text)) []
+--  <?> "pTagText"
+
 pTagText :: PU HTML
 pTagText = do
   c <- lookAhead (anyChar)
   case c of
     '<' -> unexpected (Label ((DLN.:|) '<' []) )
     _   -> do
-          text <- someTill (pEscapedChar <|> anyChar) (lookAhead (string "<" <|> string ">" <|> string "&") )
-          return $ GTree (CTagText NotDecidedTextMark (Right text)) []
+          text <- someTill anyChar (lookAhead (string "<") )
+          return $ GTree (CTagText NotDecidedTextMark (TR text)) []
   <?> "pTagText"
 
 
-pEntitySpace :: PU HTML
-pEntitySpace =
-  (try (string "&nbsp;") >> (return $ GTree (CTagText NotDecidedTextMark (Left EntitySpace1)) [])) <|>
-  (string "&#160;" >> (return $ GTree (CTagText NotDecidedTextMark (Left EntitySpace2)) []))
+--pEntitySpace :: PU HTML
+--pEntitySpace =
+--  (try (string "&nbsp;") >> (return $ GTree (CTagText NotDecidedTextMark (Left EntitySpace1)) [])) <|>
+--  (string "&#160;" >> (return $ GTree (CTagText NotDecidedTextMark (Left EntitySpace2)) []))
 
 pTagComment :: PU HTML
 pTagComment = do
@@ -385,15 +401,25 @@ prtHTML :: HTML -> String
 prtHTML (GTree (CTag _ tn sOrAs SelfClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ "/>"
 prtHTML (GTree (CTag _ tn sOrAs NoClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ ">"
 prtHTML (GTree (CTag _ tn sOrAs NormalClose) children) = wrapTagO (prtCTagName tn ++ flatSorAs sOrAs) ++ concatMap prtHTML children ++ wrapTagC (prtCTagName tn)
-prtHTML (GTree (CTagText _ eTxt) []) = either prtESpace unEscape eTxt
+prtHTML (GTree (CTagText _ (TL entity)) []) = prtEntity entity
+prtHTML (GTree (CTagText _ (TM spaces)) []) = spaces
+prtHTML (GTree (CTagText _ (TR str)) []) = str
 prtHTML (GTree (CTagComment cmt) []) = "<!--" ++ cmt ++ "-->"
 prtHTML (GTree (CTagScript txt) []) = txt
 prtHTML (GTree (CTagCode code) []) = unEscape code
 
-prtESpace :: ESpaces -> String
-prtESpace EntitySpace1 = "&nbsp;"
-prtESpace EntitySpace2 = "&#160;"
-prtESpace (NormalSpace ss) = ss
+prtEntity :: Entity -> String
+prtEntity EntitySpace1 = "&nbsp;"
+prtEntity EntitySpace2 = "&#160;"
+prtEntity EntityLT1 = "&lt;"
+prtEntity EntityLT2 = "&#60;"
+prtEntity EntityGT1 = "&gt;"
+prtEntity EntityGT2 = "&#62;"
+prtEntity EntityAmp1 = "&amp;"
+prtEntity EntityAmp2 = "&#38;"
+
+
+
 
 flatSorAs :: [Either Spaces Attribute] -> String
 flatSorAs [] = ""
@@ -421,58 +447,111 @@ prtSupportedName CSuperscript = "sup"; prtSupportedName CSubscript = "sub"
 prtSupportedName CQuoted = "q"       ; prtSupportedName CCite = "cite"
 prtSupportedName CLink = "a"         ; prtSupportedName CImg = "img"
 
+
+
 ------------------------
+
+-- transfer the entities to the corresponding constructors.
+recogEntities :: HTML -> HTML
+recogEntities t@(GTree (CTag mk0 tn attrs mk1) subtags) =
+  if isSubtreeInline t then (GTree (CTag mk0 tn attrs mk1) (concatMap recogEntities2 $ subtags))
+  else GTree (CTag mk0 tn attrs mk1) (map recogEntities subtags)
+recogEntities t = t
+
+
+
+recogEntities2 :: HTML -> [HTML]
+recogEntities2 t@(GTree (CTagText mk0 (TR str)) []) = concat $ recogEntities3 mk0 [] str
+recogEntities2 (GTree (CTag mk0 tn attrs mk1) subtag) = [GTree (CTag mk0 tn attrs mk1) (concatMap recogEntities2 subtag)]
+recogEntities2 t = [t]
+
+--recogEntities3 :: TextMark -> String -> String -> [[HTML]]
+--recogEntities3 mk acc (a:b:c:d:rem) =
+--  (:) (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []] ) $
+--    case [a,b,c,d] of
+--      "&gt;" -> [GTree (CTagText mk (TL EntityGT1)) []] : recogEntities3 mk [] rem
+--      "&lt;" -> [GTree (CTagText mk (TL EntityLT1)) []] : recogEntities3 mk [] rem
+--      _      -> case rem of
+--        e:rem' -> case [a,b,c,d,e] of
+--          "&#60;" -> [GTree (CTagText mk (TL EntityLT2)) []] : recogEntities3 mk [] rem'
+--          "&#62;" -> [GTree (CTagText mk (TL EntityGT2)) []] : recogEntities3 mk [] rem'
+--          "&amp;" -> [GTree (CTagText mk (TL EntityAmp1)) []] : recogEntities3 mk [] rem'
+--          "&#38;" -> [GTree (CTagText mk (TL EntityAmp2)) []] : recogEntities3 mk [] rem'
+--          _       -> case rem' of
+--            f:rem'' -> case [a,b,c,d,e,f] of
+--              "&nbsp;" -> [GTree (CTagText mk (TL EntitySpace1)) []] : recogEntities3 mk [] rem''
+--              "&#160;" -> [GTree (CTagText mk (TL EntitySpace2)) []] : recogEntities3 mk [] rem''
+--              _        -> recogEntities3 mk (a:acc) (b:c:d:e:f:rem'')
+--            _       -> recogEntities3 mk (a:acc) (b:c:d:e:rem')
+--        _      -> recogEntities3 mk (a:acc) (b:c:d:rem)
+--recogEntities3 mk acc rem =
+--  (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TR rem)) []] : []
+
+recogEntities3 :: TextMark -> String -> String -> [[HTML]]
+recogEntities3 mk acc ('&':'n':'b':'s':'p':';' :rem) = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntitySpace1)) []] : recogEntities3 mk [] rem
+recogEntities3 mk acc ('&':'#':'1':'6':'0':';' :rem) = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntitySpace2)) []] : recogEntities3 mk [] rem
+recogEntities3 mk acc ('&':'l':'t':';' :rem)         = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityLT1))    []] : recogEntities3 mk [] rem
+recogEntities3 mk acc ('&':'#':'6':'0':';' :rem)     = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityLT2))    []] : recogEntities3 mk [] rem
+recogEntities3 mk acc ('&':'g':'t':';' :rem)         = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityGT1))    []] : recogEntities3 mk [] rem
+recogEntities3 mk acc ('&':'#':'6':'2':';' :rem)     = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityGT2))    []] : recogEntities3 mk [] rem
+recogEntities3 mk acc ('&':'a':'m':'p':';' :rem)     = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityAmp1))   []] : recogEntities3 mk [] rem
+recogEntities3 mk acc ('&':'#':'3':'8':';' :rem)     = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityAmp2))   []] : recogEntities3 mk [] rem
+recogEntities3 mk acc (x:rem) = recogEntities3 mk (x:acc) rem
+recogEntities3 mk acc [] = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : []
+
+
 -- to distinguish Inline TextNode and Other TextNode.
 -- to merge adjacent spaces together.
 refineDoc :: HTMLDoc -> HTMLDoc
-refineDoc (HTMLDoc s0 doctype s1 html s2) = HTMLDoc s0 doctype s1 (refine1 html) s2
+refineDoc (HTMLDoc s0 doctype s1 html s2) = HTMLDoc s0 doctype s1 (refine1 . recogEntities $ html) s2
 
 refine1 :: HTML -> HTML
 refine1 t@(GTree (CTag mk0 tn attrs mk1) subtags) =
   if isSubtreeInline t
-    then GTree (CTag mk0 tn attrs mk1) (concatMap refine2 subtags)
+    then GTree (CTag mk0 tn attrs mk1) (concatMap refineInlineTag subtags)
     else GTree (CTag mk0 tn attrs mk1) (map refine1 subtags)
-refine1 (GTree (CTagText NotDecidedTextMark (Right txt)) []) = GTree (CTagText OtherText (Right txt)) []
+refine1 (GTree (CTagText NotDecidedTextMark (TR str)) []) = GTree (CTagText OtherText (TR str)) []
 refine1 t = t
 
-refine2 :: GTree CTag -> [GTree CTag]
-refine2 (GTree (CTagText NotDecidedTextMark (Left EntitySpace1)) []) = [GTree (CTagText InlineText (Left EntitySpace1)) []]
-refine2 (GTree (CTagText NotDecidedTextMark (Left EntitySpace2)) []) = [GTree (CTagText InlineText (Left EntitySpace2)) []]
-refine2 (GTree (CTagText NotDecidedTextMark eTxt) []) = concatMap divideAtLineBreak . map refine4 . refine3 . fromRight $ eTxt
+--TL Entity | TM Spaces | TR String
+refineInlineTag :: GTree CTag -> [GTree CTag]
+refineInlineTag (GTree (CTagText NotDecidedTextMark (TR str)) []) = concatMap divideAtLineBreak . map markSpace . sepString $ str
 -- eg:  (GTree (CTag Inline CStrong attrs NormalClose) subtext...)
 -- CTagCode is already set to Inline during the parsing stage.
-refine2 (GTree (CTag Inline tn attrs mk1) subtags) = [(GTree (CTag Inline tn attrs mk1)) (concatMap refine2 subtags)]
-refine2 c = [c]
---refine2 t = error $ "unexpected tag. tag should be text tag or inline tag: " ++ show t
+refineInlineTag (GTree (CTag Inline tn attrs mk1) subtags) = [(GTree (CTag Inline tn attrs mk1)) (concatMap refineInlineTag subtags)]
+refineInlineTag (GTree (CTagText NotDecidedTextMark (TL entity)) []) = [GTree (CTagText InlineText (TL entity)) []]
+refineInlineTag c = [c]
+--refineInlineTag t = error $ "unexpected tag. tag should be text tag or inline tag: " ++ show t
 
 
 -- separate a string by spaces, and make each substring a GTree (CTagText InlineText ...) []
-refine3 :: String -> [GTree CTag]
-refine3 = map (\txt -> GTree (CTagText InlineText (Right txt)) []) . groupBySpaces
+sepString :: String -> [GTree CTag]
+sepString = map (\str -> GTree (CTagText InlineText (TR str)) []) . groupBySpaces
   where groupBySpaces :: String -> [String]
         groupBySpaces = groupBy (\x y -> isSpace x && isSpace y || not (isSpace x) && not (isSpace y))
   --  groupBy predicate "ab \t\t  defsdfsdf          g"   ---->   ["ab"," \t\t  ","defsdfsdf","          ","g"]
 
+
 -- mark a (GTree (CTagText InlineText ...)...) as either (Left Spaces) if it is space string or Right String.
-refine4 :: GTree CTag -> GTree CTag
-refine4 (GTree (CTagText InlineText (Right ss@(spc:spcs))) []) =
-  if isSpace spc then GTree (CTagText InlineText (Left (NormalSpace ss))) [] else GTree (CTagText InlineText (Right ss)) []
+markSpace :: GTree CTag -> GTree CTag
+markSpace (GTree (CTagText InlineText (TR ss@(spc:spcs))) []) =
+  if isSpace spc then GTree (CTagText InlineText (TM ss)) [] else GTree (CTagText InlineText (TR ss)) []
 
 -- given a list of space characters such as " ", "\n", "\t"... break it into several parts at "\n".
 -- since "\n" is treated as SoftBreak.
 divideAtLineBreak :: GTree CTag -> [GTree CTag]
-divideAtLineBreak gt@(GTree (CTagText InlineText (Right _)) []) = [gt]
-divideAtLineBreak (GTree (CTagText InlineText (Left (NormalSpace spaces))) []) = divideAtLineBreak_ spaces
+divideAtLineBreak gt@(GTree (CTagText InlineText (TR _)) []) = [gt]
+divideAtLineBreak (GTree (CTagText InlineText (TM spaces)) []) = divideAtLineBreak_ spaces
   where divideAtLineBreak_ spaces =
           let (a, b) = span (/='\n') spaces
           in  case a of
                 "" -> case b of
-                        '\n':remains -> GTree (CTagText InlineText (Left (NormalSpace "\n"))) [] : divideAtLineBreak_ remains
+                        '\n':remains -> GTree (CTagText InlineText (TM "\n")) [] : divideAtLineBreak_ remains
                         ""           -> []
                 _  -> case b of
-                        '\n':remains -> GTree (CTagText InlineText (Left (NormalSpace a))) [] :
-                                        GTree (CTagText InlineText (Left (NormalSpace "\n"))) [] : divideAtLineBreak_ remains
-                        ""           -> [GTree (CTagText InlineText (Left (NormalSpace a))) []]
+                        '\n':remains -> GTree (CTagText InlineText (TM a)) [] :
+                                        GTree (CTagText InlineText (TM "\n")) [] : divideAtLineBreak_ remains
+                        ""           -> [GTree (CTagText InlineText (TM a)) []]
 
 
 isSubtreeInline :: GTree CTag -> Bool
@@ -490,9 +569,9 @@ t1 = do
   i <- readFile "test111.html"
   let o  = either (error. show) id (parse parseDoc "1.html" i)
       oo = refineDoc o
-  putStrLn "show:"
-  putStrLn (show oo)
-  putStrLn "print back:"
+  putStrLn "html CST:"
+  putPretty oo
+  putStrLn "print CST back:"
   putStrLn (prtDocument oo)
   putStrLn "\nequal?\n"
   putStrLn (show (prtDocument oo == i))

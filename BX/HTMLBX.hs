@@ -188,10 +188,11 @@ inlineBX =
 --         , $(adaptive [| \_ (AbsStr s) -> length s == 1 && head s `elem` punctuation |])
 --           ==> \s v -> (EscapedCharInline ' ')
 
+
          -- Case: AbsStr. not a whitespace string
-         $(normalSV [p| GTree (CTagText InlineText (Right _)) [] |] [p| AbsStr _ |]
-                    [p| GTree (CTagText InlineText (Right _)) [] |])
-         ==> $(update [p| GTree (CTagText InlineText (Right str)) [] |] [p| AbsStr str |]
+         $(normalSV [p| GTree (CTagText InlineText (TR _)) [] |] [p| AbsStr _ |]
+                    [p| GTree (CTagText InlineText (TR _)) [] |])
+         ==> $(update [p| GTree (CTagText InlineText (TR str)) [] |] [p| AbsStr str |]
                       [d| str = Replace |])
 
          -- Case: Emph
@@ -207,8 +208,8 @@ inlineBX =
                       [d| subs = mapLens inlineBX createInline |])
 
          -- Case: Softbreak in markdown.
-       , $(normalSV [p| GTree (CTagText InlineText (Left (NormalSpace "\n"))) [] |] [p| AbsSoftbreak |]
-                    [p| GTree (CTagText InlineText (Left (NormalSpace "\n"))) [] |])
+       , $(normalSV [p| GTree (CTagText InlineText (TM "\n")) [] |] [p| AbsSoftbreak |]
+                    [p| GTree (CTagText InlineText (TM "\n")) [] |])
          ==> Skip (const AbsSoftbreak)
 
          -- Case: Hardbreak in markdown. Maybe it is <br> in HTML
@@ -217,17 +218,17 @@ inlineBX =
          ==> Skip (const AbsHardbreak)
 
        -- Case: non-breaking space in html . &nbsp;
-       , $(normalSV [p| GTree (CTagText InlineText (Left EntitySpace1)) [] |] [p| AbsStr " " |]
-                    [p| GTree (CTagText InlineText (Left EntitySpace1)) [] |])
+       , $(normalSV [p| GTree (CTagText InlineText (TL EntitySpace1)) [] |] [p| AbsStr " " |]
+                    [p| GTree (CTagText InlineText (TL EntitySpace1)) [] |])
          ==> Skip (const (AbsStr " "))
       -- &#160;
-       , $(normalSV [p| GTree (CTagText InlineText (Left EntitySpace2)) [] |] [p| AbsStr " " |]
-                    [p| GTree (CTagText InlineText (Left EntitySpace2)) [] |])
+       , $(normalSV [p| GTree (CTagText InlineText (TL EntitySpace2)) [] |] [p| AbsStr " " |]
+                    [p| GTree (CTagText InlineText (TL EntitySpace2)) [] |])
          ==> Skip (const (AbsStr " "))
 
          -- Case: not soft break, not hard break. other spaces.
-       , $(normalSV [p| GTree (CTagText InlineText (Left _)) [] |] [p| AbsStr _ |]
-                    [p| GTree (CTagText InlineText (Left _)) [] |])
+       , $(normalSV [p| GTree (CTagText InlineText (TM _)) [] |] [p| AbsStr _ |]
+                    [p| GTree (CTagText InlineText (TM _)) [] |])
          ==> Skip (const (AbsStr " "))
 
          -- Case: Code <code> ... </code>
@@ -251,10 +252,10 @@ inlineBX =
 
 
        , $(adaptiveSV [p| _ |] [p| AbsStr " " |])
-         ==> \_ _ -> GTree (CTagText InlineText (Left (NormalSpace " "))) []
+         ==> \_ _ -> GTree (CTagText InlineText (TM " ")) []
 
        , $(adaptiveSV [p| _ |] [p| AbsStr _ |])
-         ==> \_ _ -> GTree (CTagText InlineText (Right "")) []
+         ==> \_ _ -> GTree (CTagText InlineText (TR "")) []
 
        , $(adaptiveSV [p| _ |] [p| AbsEmph _ |])
          ==> \_ _ -> GTree (CTag Inline (Left CEmph) [] NormalClose) []
@@ -264,7 +265,7 @@ inlineBX =
 
             -- NOTE: the correct indentation is infered later
        , $(adaptiveSV [p| _ |] [p| AbsSoftbreak |])
-         ==> \_ _ -> GTree (CTagText InlineText (Left (NormalSpace "\n"))) []
+         ==> \_ _ -> GTree (CTagText InlineText (TM "\n")) []
 
        , $(adaptiveSV [p| _ |] [p| AbsHardbreak |])
          ==> \s v -> GTree (CTag Inline (Left CBr) [] NoClose) []
@@ -282,11 +283,11 @@ inlineBX =
 
 createInline :: AbsInline -> GTree CTag
 createInline v = case v of
-  AbsStr " " -> GTree (CTagText InlineText (Left (NormalSpace " "))) []
-  AbsStr _ -> GTree (CTagText InlineText (Right "newly created text to be replaced")) []
+  AbsStr " " -> GTree (CTagText InlineText (TM " ")) []
+  AbsStr _ -> GTree (CTagText InlineText (TR "newly created text to be replaced")) []
   AbsEmph _ -> GTree (CTag Inline (Left CEmph) [] NormalClose) []
   AbsStrong _ -> GTree (CTag Inline (Left CStrong) [] NormalClose) []
-  AbsSoftbreak -> GTree (CTagText InlineText (Left (NormalSpace "\n"))) []
+  AbsSoftbreak -> GTree (CTagText InlineText (TM "\n")) []
   AbsHardbreak -> GTree (CTag Inline (Left CBr) [] NoClose) []
   AbsInlineCode _ -> GTree (CTag Inline (Left CCode) [] NormalClose) [GTree (CTagCode "") []]
   AbsLink _ _  -> GTree (CTag Inline (Left CLink) [] NormalClose) []
