@@ -92,7 +92,7 @@ printBlock defaultIndent skipFirstIndent block = case block of
     (OrderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
     (BlockQuote ind str (b1:bs)) -> pInd ind ++ str ++ printBlock (defaultIndent ++ ">") True b1 ++ (concatMap (printBlock (defaultIndent ++ ">") False) bs)
     (IndentedCode codes) -> (if length codes > 0 && (\(CodeLine ind _) -> ind == DefaultIndent) (head codes) then "\n" else "") ++ concatMap (printCodeLine (defaultIndent ++ "    ")) codes
-    (FencedCode i1 f1 s1 codes i2 f2 s2) -> (pInd i1) ++ f1 ++ s1 ++ concatMap (printCodeLine (defaultIndent ++ "    ")) codes ++ pInd2 i2 ++ f2 ++ s2
+    (FencedCode i1 f1 s1 codes i2 f2 s2) -> (pInd i1) ++ f1 ++ s1 ++ concatMap (printCodeLine defaultIndent) codes ++ pInd2 i2 ++ f2 ++ s2
     where pInd ind = if skipFirstIndent then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
           pInd2 ind = printIndent defaultIndent ind
 
@@ -114,12 +114,12 @@ printInline defaultIndent inline = case inline of
 
 printListItem :: String -> Bool -> ListItem -> String
 printListItem defaultIndent skipFirstIndent (UnorderedListItem ind sps bullet sps2 (it1:items)) = pInd ind ++ sps ++ [bullet] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
-    where pInd ind = if skipFirstIndent then "" else printIndent defaultIndent ind
+    where pInd ind = if skipFirstIndent then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
           newIndent = defaultIndent ++ " " ++ sps2
 
 printListItem defaultIndent skipFirstIndent (OrderedListItem ind sps number dot sps2 (it1:items)) = pInd ind ++ sps ++ number ++ [dot] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
-    where pInd ind = if skipFirstIndent then "" else printIndent defaultIndent ind
-          newIndent = defaultIndent ++ " " ++ sps2
+    where pInd ind = if skipFirstIndent then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
+          newIndent = defaultIndent ++ (replicate (length number + 1) ' ') ++ sps2
 
 printCodeLine :: String -> CodeLine -> String
 printCodeLine defaultIndent (CodeLine ind code) = printIndent defaultIndent ind ++ code
@@ -196,7 +196,8 @@ blankLine = try $ do
     let newSt = st{indents = trimLastSpaceIndent (indents st)}
     putState newSt
     ind <- indentation
-    putState st
+    -- putState st
+    modifyState (\st2 -> st2{indents = indents st})
     s <- spaceChars
     n <- newline
     return $ BlankLine (Indent ind) (s ++ [n])
@@ -286,7 +287,7 @@ fencedCode = try $ do
     fence2 <- string fence
     sp2 <- spaceChars
     newline
-    return $ FencedCode (Indent ind1) fence sp1 code (Indent ind2) fence2 sp2
+    return $ FencedCode (Indent ind1) fence (sp1 ++ "\n") code (Indent ind2) fence2 (sp2 ++ "\n")
 
 -- | Parses a paragraph.
 --
@@ -313,6 +314,7 @@ unorderedListChar = "-*+"
 
 unorderedListItem :: Parsec String ParserStatus ListItem
 unorderedListItem  = try $ do
+    st0 <- getState
     ind <- indentation
     sp <- manyRange 0 3 ' '
     ch <- oneOf unorderedListChar
