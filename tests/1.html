@@ -6,14 +6,16 @@
   <!-- comment will be ignored -->
   <!-- test div and ul -->
   <div>
-    <ul>
-      not good
-      <li>
-        no good
-        <p>1</p>
-        <p>aa bb 33</p>
-      </li>
-    </ul>
+    <div>
+      <ul>
+        not good
+        <li>
+          no good
+          <p>1</p>
+          <p>aa bb 33</p>
+        </li>
+      </ul>
+    </div>
   </div>
 
   <!-- test ol -->
@@ -25,10 +27,11 @@
   <!-- dl is not supported in the current AST -->
 
   <!-- test code block -->
-  <pre>
-    <code>let g f = f + f in g</code>
+<!--   <pre>
+    <code>let g f = f + f in g
+    </code>
   </pre>
-
+ -->
   <!-- test code inline -->
   <p><code>fix f = f (fix f)</code><br>
   this is a function</p>
@@ -55,9 +58,13 @@
   </p>
 
   <div>
-    <h1>1o   a</h1>
-    <h2>2o   b</h2>
-    <p>3o    c <code>let f = f + 1 in f</code> </p>
+    <div>
+      <h1>1o   a</h1>
+        <div>
+          <div><h2>2o   b</h2></div>
+        </div>
+      <p>3o    c <code>let f = f + 1 in f</code> </p>
+    </div>
   </div>
   <p style="hehe:haha" class="OOXX">
     123 abc <em> xxx  <strong> <em>ZZZ</em></strong>  </em>
