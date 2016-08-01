@@ -217,7 +217,7 @@ inlineBX =
          ==> Skip (const AbsHardbreak)
 
          -- Case: not soft break, not hard break. other spaces.
-       , $(normalSV [p| GTree (CTagText InlineText (Left _)) [] |] [p| AbsStr _ |]
+       , $(normalSV [p| GTree (CTagText InlineText (Left _)) [] |] [p| AbsStr " " |]
                     [p| GTree (CTagText InlineText (Left _)) [] |])
          ==> Skip (const (AbsStr " "))
 

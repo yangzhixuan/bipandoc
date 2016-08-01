@@ -11,6 +11,7 @@ import Data.Maybe
 import Control.Monad
 import Test.QuickCheck.Gen
 import Test.QuickCheck
+import Text.Show.Pretty
 
 
 import Generics.BiGUL
@@ -46,7 +47,7 @@ prop_HTML_MD_HTML_round htmlCST =
 
 prop_HTML_MD_HTML_round_allow_fail :: HTMLDoc -> Bool
 prop_HTML_MD_HTML_round_allow_fail htmlCST =
-    fromMaybe (trace "a fail\n" True) $ 
+    fromMaybe (trace "\na bigul fail\n" True) $ 
       do let htmlTXT = prtDocument htmlCST
          ast <- get htmlBX htmlCST
          mdCST <- put markdownBX emptyMD ast
@@ -64,13 +65,15 @@ test2 htmlCST = do
   let ast     = maybe (error "error in (get htmlBX)") id (get htmlBX htmlCST)
   putStrLn "original AST\n"
   putPretty ast
+  writeFile "test-original-ast.txt" (ppShow ast)
   let mdCST   = maybe (error "error in (put markdownBX)") id (put markdownBX emptyMD ast)
---  putStrLn "\nmarkdown CST:\n"
---  putPretty mdCST
+  putStrLn "\nmarkdown CST:\n"
+  putPretty mdCST
 
   let mdTXT   = printMarkdown mdCST
   putStrLn "\nmarkdown text:\n"
   putStrLn mdTXT
+  writeFile "test-markdown.md" mdTXT
 
   let mdCST'  = parseMarkdown mdTXT
 --  putStrLn "\nmarkdown CST (new):\n"
@@ -79,6 +82,7 @@ test2 htmlCST = do
   let ast'    = maybe (error "error in (get markdownBX)") id (get markdownBX mdCST')
   putStrLn "\nAST (new):\n"
   putPretty ast'
+  writeFile "test-new-ast.txt" (ppShow ast')
   putStr "\nView eq to original view? :"
   print (ast' == ast)
   putStrLn ""
@@ -192,7 +196,7 @@ genInline' n | n > 0 =
   frequency [(6, genInlineText)
 --            ,(1, genComments)
             ,(1, genSTRONG' (n `div` 4))
-            ,(1, genEMPH' (n `div` 4))
+            --,(1, genEMPH' (n `div` 4))
             ,(1, genINLINECODE)
             ,(1, genIMG)
             ,(1, genLINK' (n `div` 4))]

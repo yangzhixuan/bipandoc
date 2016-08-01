@@ -1,6 +1,8 @@
 import qualified Generics.BiGUL
 import qualified Generics.BiGUL.Interpreter as BiGUL
 import qualified Generics.BiGUL.TH
+import Generics.BiGUL.Error (BiGULTrace)
+
 
 import Abstract
 
@@ -39,6 +41,15 @@ get opt src = case srcFormat opt of
 
     f -> error ("Invalid source format: " ++ f)
 
+getTrace :: Options -> String -> BiGULTrace
+getTrace opt src = case srcFormat opt of
+
+    "html" -> BiGUL.getTrace HTMLBX.htmlBX (HTMLParser.parseHTML src)
+
+    "markdown" -> BiGUL.getTrace MarkdownBX.markdownBX (MarkdownParser.parseMarkdown src)
+
+    f -> error ("Invalid source format: " ++ f)
+
 
 put :: Options -> String -> AbsDocument -> Maybe String
 put opt src view = case dstFormat opt of 
@@ -52,6 +63,17 @@ put opt src view = case dstFormat opt of
     where put' (bx, parser, printer) = do
             src' <- BiGUL.put bx (parser src) view
             return $ printer src'
+
+putTrace :: Options -> String -> AbsDocument -> BiGULTrace
+putTrace opt src view = case dstFormat opt of 
+
+    "html" -> put' (HTMLBX.htmlBX, HTMLParser.parseHTML, HTMLParser.prtDocument)
+
+    "markdown" -> put' (MarkdownBX.markdownBX, MarkdownParser.parseMarkdown, MarkdownParser.printMarkdown)
+
+    f -> error ("Invalid target format: " ++ f)
+
+    where put' (bx, parser, printer) = BiGUL.putTrace bx (parser src) view
 
 defaultDocument :: String -> String
 defaultDocument format = 
@@ -78,6 +100,7 @@ main = do
     if isNothing viewM
        then do
            putStrLn $ "Failed to get view from " ++ src
+           print $ getTrace opts src
            return ()
        else do
            let (Just view) = viewM
@@ -92,7 +115,8 @@ main = do
            let targetM = put opts dst view
            if isNothing targetM 
               then do
-                  putStrLn $ "Failed to put-back into target"
+                  putStrLn $ "Failed to put-back into target, see trace:"
+                  print $ putTrace opts dst view
                   return ()
               else do
                   let (Just target) = targetM
