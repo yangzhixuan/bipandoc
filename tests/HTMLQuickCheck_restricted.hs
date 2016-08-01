@@ -105,13 +105,13 @@ genHTML' n = do
   tags <- listOf1 (resize 8 $ genBlockTag' (n `div` 2))
   tags' <- noConsecutiveLists (n `div` 2) tags
   return $ GTree (CTag Block (Right "html") [] NormalClose)
-           [GTree (CTagText OtherText (Right "\n")) []
-           ,GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (Right "\n")) []]
-           ,GTree (CTagText OtherText (Right "\n  ")) []
+           [GTree (CTagText OtherText (TR "\n")) []
+           ,GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (TR "\n")) []]
+           ,GTree (CTagText OtherText (TR "\n  ")) []
            ,GTree (CTag Block (Right "body") [] NormalClose) tags']
 
 genBlockTag' :: Int -> Gen (GTree CTag)
-genBlockTag' 0 = return $ GTree (CTagText OtherText (Right "\n")) []
+genBlockTag' 0 = return $ GTree (CTagText OtherText (TR "\n")) []
 genBlockTag' n | n > 0 =
   frequency [(1, genComments)
             -- ,(1, return $ GTree (CTagText OtherText (Right "\n")) [])
@@ -170,7 +170,7 @@ genP' :: Int -> Gen (GTree CTag)
 genP' n = do
   attrs <- listOf genAttributeWithSpace
   inlines <- resize 4 $ listOf1 (genInline' (n `div` 2) )
-  return $ GTree (CTag Block (Left CPara) (concat attrs) NormalClose) ( GTree (CTagText InlineText (Right "nonempty")) [] : inlines)
+  return $ GTree (CTag Block (Left CPara) (concat attrs) NormalClose) ( GTree (CTagText InlineText (TR "nonempty")) [] : inlines)
 
 genHEAD' :: Int -> Gen (GTree CTag)
 genHEAD' n = do
@@ -191,7 +191,7 @@ genAttributeWithSpace = do
           return $ Attribute name " = " val
 
 genInline' :: Int -> Gen (GTree CTag)
-genInline' 0 = return $ GTree (CTagText InlineText (Left "a space ")) []
+genInline' 0 = return $ GTree (CTagText InlineText (TR "this is not a space? ")) []
 genInline' n | n > 0 =
   frequency [(6, genInlineText)
 --            ,(1, genComments)
@@ -203,7 +203,7 @@ genInline' n | n > 0 =
 
 
 genInlineText :: Gen (GTree CTag)
-genInlineText = do {txt <- strWithoutSpace; return $ GTree (CTagText InlineText (Right txt)) []}
+genInlineText = do {txt <- strWithoutSpace; return $ GTree (CTagText InlineText (TR txt)) []}
 
 genSTRONG' :: Int -> Gen (GTree CTag)
 genSTRONG' n = do {inlines <- resize 8 $ listOf1 (genInline' (n `div` 4)); attrs <- listOf genAttributeWithSpace; return $ GTree (CTag Inline (Left CStrong) (concat attrs) NormalClose) inlines}
@@ -229,11 +229,11 @@ genBR = return $ GTree (CTag Inline (Left CBr) [] NoClose) []
 
 -- soft break. \n
 genSOFTBREAK :: Gen (GTree CTag)
-genSOFTBREAK = return $ GTree (CTagText InlineText (Left "\n")) []
+genSOFTBREAK = return $ GTree (CTagText InlineText (TM "\n")) []
 
 -- a sequence of spaces of length 1 - 10
 genSpaceInlineText :: Gen (GTree CTag)
-genSpaceInlineText = do {spaces <- genSpaces; return $ GTree (CTagText InlineText (Left spaces)) []}
+genSpaceInlineText = do {spaces <- genSpaces; return $ GTree (CTagText InlineText (TM spaces)) []}
 
 
 
