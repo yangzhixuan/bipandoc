@@ -48,13 +48,16 @@ testGetPut1 = do
   let mdCST' = parseMarkdown md
   putStrLn (ppShow mdCST')
   putStrLn "parse that generated markdown CST' to AST':\n==================="
+  putStrLn ""
   let ast' = maybe (error "parse cst to ast error") id (get BXM.markdownBX mdCST')
   putStrLn (ppShow ast')
-  putStrLn ""
+
   putStrLn "put that markdown AST back to the html CST':\n==================="
-  putStrLn (show $ putTrace htmlBX htmlCST ast')
-  putStrLn (ppShow htmlCST')
+  putStrLn ""
+  --putStrLn (show $ putTrace htmlBX htmlCST ast')
   let htmlCST' = maybe (error "print ast' back to cst' error") id (put htmlBX htmlCST ast')
+  putStrLn (ppShow htmlCST')
+
   putStrLn "newly generated html document:"
   putStrLn ""
   putStrLn (prtDocument htmlCST')

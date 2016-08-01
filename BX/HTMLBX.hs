@@ -15,6 +15,8 @@ import Text.Megaparsec hiding (State)
 import qualified System.IO.Strict as IOS
 import Control.Monad.State as State
 
+import Data.Char (isSpace)
+
 import Debug.Trace
 import Text.Show.Pretty (ppShow)
 
@@ -34,7 +36,7 @@ refineBX1 :: BiGUL [GTree CTag] [AbsBlock]
 refineBX1 =
   Case  [ $(normalSV [p| GTree (CTag Block (Right "body") _ NormalClose) _ : [] |] [p| _ |]
                      [p| GTree (CTag Block (Right "body") _ NormalClose) _ : [] |]) $
-            $(update [p| [body] |] [p| body |] [d| body = flattenDiv `Compose` blockListBX |])
+            $(update [p| [body] |] [p| body |] [d| body = lensFlattenDiv `Compose` blockListBX |])
         ]
 
 -- kind of filter-GTree, but do not test the given node. The filter actually statrs from its children list.
@@ -61,72 +63,6 @@ blockListBX =
         ]
 
 
-t233 = State.evalState (dfsPut source233) view233
-
-source233 = GTree (CTag Block (Left CDiv) [] NormalClose)
-            [GTree (CTag Block (Left CPara) [] NormalClose) []
-            ,GTree (CTag Block (Left (CHead 3)) [] NormalClose) []]
-
-view233 = [GTree (CTag Block (Left (CHead 6)) [] NormalClose) []
-          ]
-
-
-flattenDiv :: BiGUL (GTree CTag) [GTree CTag]
-flattenDiv = emb (dfsGet) (dfsPut')
-
-dfsGet :: GTree CTag -> [GTree CTag]
-dfsGet node = case node of
-  GTree (CTag Block (Left CDiv) _ NormalClose) subtags -> concatMap dfsGet subtags
-  b@(GTree (CTag Block (Left _) _ NormalClose) _) -> [b]
-  GTree (CTag Block (Right "body") _ NormalClose) subtags -> concatMap dfsGet subtags
-  _ -> error "error raised in dfsGet. The given source is not a block element."
-
-
-dfsPut' = \s v -> case State.evalState (dfsPut s) v of
-  [tag] -> trace ("\n\ntag\n\n" ++ ppShow tag) $ tag
-  err     -> trace ("\n\ntag\n\n" ++ ppShow err) $ error "the result of dfsPut should be a singleton list"
-
-
--- concat [GTree CTag] will throw away the deleted elements (empty list)
-dfsPut :: GTree CTag -> State [GTree CTag] [GTree CTag]
-dfsPut node = case node of
-  tag@(GTree (CTag Block (Left CDiv) attrs NormalClose) subtags) ->
-    State.get >>= \v' -> case v' of
-      (v:vs) -> do
-        newsubtags <- mapM dfsPut subtags
-        let remainV = drop (countBlockElement tag) v'
-        State.put remainV
-        return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)]
-      []    -> return []
-  tag@(GTree (CTag Block (Left _) _ NormalClose) _) ->
-    State.get >>= \v' -> case v' of
-      (v:vs) -> State.put vs >> return [v]
-      []     -> return []
-  tag@(GTree (CTag Block (Right "body") attrs NormalClose) subtags) ->
-    State.get >>= \v' -> case v' of
-      (v:vs) -> do
-        newsubtags <- mapM dfsPut subtags
-        let remainV = drop (countBlockElement tag) v'
-        traceM ("COUNTELEMENT:\n:" ++ show (countBlockElement tag))
-        State.put remainV
-        return [GTree (CTag Block (Right "body") attrs NormalClose) (concat newsubtags ++ remainV)]
-      []    -> return $ [GTree (CTag Block (Right "body") attrs NormalClose) []]
-  _ -> error "error raised in dfsPut. The given source is not a block element."
-
-
-countBlockElement :: GTree CTag -> Int
-countBlockElement (GTree (CTag Block (Left CPara) _ _) _) = 1
-countBlockElement (GTree (CTag Block (Left (CHead _)) _ _) _) = 1
-countBlockElement (GTree (CTag Block (Left CBlockQuote) _ _) _) = 1
-countBlockElement (GTree (CTag Block (Left CPre) _ _) _) = 1
-countBlockElement (GTree (CTag Block (Left CUnorderedList) _ _) lis) = 1
-countBlockElement (GTree (CTag Block (Left COrderedList) _ _) lis) = 1
-countBlockElement (GTree (CTag Block (Left CDiv) _ _) subtags) = sum $ map countBlockElement subtags
-countBlockElement (GTree (CTag Block (Right "body") attrs NormalClose) subtags) = sum $ map countBlockElement subtags
--- count <li> blocks are not counted
-
-
-
 -- we follow the idea similar to lensMap: the strategy is matching by position.
 -- we could in the future use align to calculate similarity between source block and view block.
 -- Then we may need to move adaptation statements to the end of the group.
@@ -136,13 +72,13 @@ blockBX =
          $(normalSV [p| GTree (CTag Block (Left CPara) _ NormalClose) _ |] [p| AbsPara _ |]
                     [p| GTree (CTag Block (Left CPara) _ NormalClose) _ |])
          ==> $(update [p| GTree (CTag Block (Left CPara) _ NormalClose) xs |] [p| AbsPara xs |]
-                      [d| xs = mapLens inlineBX createInline |])
+                      [d| xs = mapLens inlineBX createInline `Compose` lensConcatEntityStr |])
 
          -- Case: Heading
        , $(normalSV [p| GTree (CTag Block (Left (CHead _ )) _ NormalClose) _ |] [p| AbsHeading _ _ |]
                     [p| GTree (CTag Block (Left (CHead _ )) _ NormalClose) _ |])
          ==> $(update [p| GTree (CTag Block (Left (CHead level )) _ NormalClose) contents |] [p| AbsHeading level contents |]
-                      [d| level = Replace; contents = mapLens inlineBX createInline |])
+                      [d| level = Replace; contents = mapLens inlineBX createInline `Compose` lensConcatEntityStr |])
 
          -- Case: AbsUnorderedList
        , $(normalSV [p| GTree (CTag Block (Left CUnorderedList) _ NormalClose) _ |] [p| AbsUnorderedList _ |]
@@ -222,23 +158,7 @@ orderedListItemBX = $(update [p| GTree (CTag Block (Left CListItem) _ _ ) blocks
 
 inlineBX :: BiGUL (GTree CTag) AbsInline
 inlineBX =
-  Case [ -- Case: AbsStr is a space
---         $(normal [| \(Spaces _) (AbsStr s) -> s == " " |] [| \(Spaces _) -> True |])
---           ==> Skip (const (AbsStr " "))
-
---         , $(adaptive [| \_ (AbsStr s) -> s == " " |])
---           ==> \s v -> (Spaces " ")
-
---           -- Case: AbsStr is a punctuation
---         , $(normal [| \(EscapedCharInline _) (AbsStr s) -> length s == 1 && head s `elem` punctuation |]
---                    [| \(EscapedCharInline _) -> True |])
---           ==> $(update [p| EscapedCharInline c |] [p| AbsStr (c : []) |]
---                        [d| c = Replace |])
-
---         , $(adaptive [| \_ (AbsStr s) -> length s == 1 && head s `elem` punctuation |])
---           ==> \s v -> (EscapedCharInline ' ')
-
-
+  Case [
          -- Case: AbsStr. not a whitespace string
          $(normalSV [p| GTree (CTagText InlineText (TR _)) [] |] [p| AbsStr _ |]
                     [p| GTree (CTagText InlineText (TR _)) [] |])
@@ -249,13 +169,13 @@ inlineBX =
        , $(normalSV [p| GTree (CTag Inline (Left CEmph) _ NormalClose) _ |] [p| AbsEmph _ |]
                     [p| GTree (CTag Inline (Left CEmph) _ NormalClose) _ |])
          ==> $(update [p| GTree (CTag Inline (Left CEmph) _ NormalClose) subs |] [p| AbsEmph subs |]
-                      [d| subs = mapLens inlineBX createInline |])
+                      [d| subs = mapLens inlineBX createInline `Compose` lensConcatEntityStr |])
 
          -- Case: Strong
        , $(normalSV [p| GTree (CTag Inline (Left CStrong) _ NormalClose) _ |] [p| AbsStrong _ |]
                     [p| GTree (CTag Inline (Left CStrong) _ NormalClose) _ |])
          ==> $(update [p| GTree (CTag Inline (Left CStrong) _ NormalClose) subs |] [p| AbsStrong subs |]
-                      [d| subs = mapLens inlineBX createInline |])
+                      [d| subs = mapLens inlineBX createInline `Compose` lensConcatEntityStr |])
 
          -- Case: Softbreak in markdown.
        , $(normalSV [p| GTree (CTagText InlineText (TM "\n")) [] |] [p| AbsSoftbreak |]
@@ -281,6 +201,33 @@ inlineBX =
                     [| \(GTree (CTagText InlineText (TM str)) []) -> str /= "\n" |])
          ==> Skip (const (AbsStr " "))
 
+      -- Case:  &lt;
+       , $(normalSV [p| GTree (CTagText InlineText (TL EntityLT1)) [] |] [p| AbsStr "<" |]
+                    [p| GTree (CTagText InlineText (TL EntityLT1)) [] |])
+         ==> Skip (const (AbsStr "<"))
+      -- "&#60;"
+       , $(normalSV [p| GTree (CTagText InlineText (TL EntityLT2)) [] |] [p| AbsStr "<" |]
+                    [p| GTree (CTagText InlineText (TL EntityLT2)) [] |])
+         ==> Skip (const (AbsStr "<"))
+
+      -- Case:  &gt;
+       , $(normalSV [p| GTree (CTagText InlineText (TL EntityGT1)) [] |] [p| AbsStr ">" |]
+                    [p| GTree (CTagText InlineText (TL EntityGT1)) [] |])
+         ==> Skip (const (AbsStr ">"))
+      -- "&#62;"
+       , $(normalSV [p| GTree (CTagText InlineText (TL EntityLT2)) [] |] [p| AbsStr ">" |]
+                    [p| GTree (CTagText InlineText (TL EntityLT2)) [] |])
+         ==> Skip (const (AbsStr ">"))
+
+      -- Case:  "&amp;"
+       , $(normalSV [p| GTree (CTagText InlineText (TL EntityAmp1)) [] |] [p| AbsStr "&" |]
+                    [p| GTree (CTagText InlineText (TL EntityAmp1)) [] |])
+         ==> Skip (const (AbsStr "&"))
+      -- "&#38;"
+       , $(normalSV [p| GTree (CTagText InlineText (TL EntityAmp2)) [] |] [p| AbsStr "&" |]
+                    [p| GTree (CTagText InlineText (TL EntityAmp2)) [] |])
+         ==> Skip (const (AbsStr "&"))
+
          -- Case: Code <code> ... </code>
        , $(normalSV [p| GTree (CTag Inline (Left CCode) _ NormalClose) _ |] [p| AbsInlineCode _ |]
                     [p| GTree (CTag Inline (Left CCode) _ NormalClose) _ |])
@@ -291,7 +238,7 @@ inlineBX =
        , $(normalSV [p| GTree (CTag Inline (Left CLink) _ NormalClose) _ |] [p| AbsLink _ _ |]
                     [p| GTree (CTag Inline (Left CLink) _ NormalClose) _ |])
          ==> $(update [p| GTree (CTag Inline (Left CLink) dest NormalClose) text |] [p| AbsLink text dest |]
-                      [d| text = mapLens inlineBX createInline; dest = replaceHref |])
+                      [d| text = mapLens inlineBX createInline `Compose` lensConcatEntityStr ; dest = replaceHref |])
 
          -- Case: AbsImage
        , $(normalSV [p| GTree (CTag Inline (Left CImg) _ _) _ |] [p| AbsImage _ _ |]
@@ -394,3 +341,84 @@ addQuotes s v = case s of
   '"':_   -> "\"" ++ v ++ "\""
   _       -> "\"" ++ v ++ "\""  -- default case.
 
+
+
+lensFlattenDiv :: BiGUL (GTree CTag) [GTree CTag]
+lensFlattenDiv = emb (flattenDivGet) (flattenDivPut)
+
+flattenDivGet :: GTree CTag -> [GTree CTag]
+flattenDivGet node = case node of
+  GTree (CTag Block (Left CDiv) _ NormalClose) subtags -> concatMap flattenDivGet subtags
+  b@(GTree (CTag Block (Left _) _ NormalClose) _) -> [b]
+  GTree (CTag Block (Right "body") _ NormalClose) subtags -> concatMap flattenDivGet subtags
+  _ -> error "error raised in flattenDivGet. The given source is not a block element."
+
+
+flattenDivPut = \s v -> case State.evalState (flattenDivPut_ s) v of
+  [tag] -> tag
+  err   -> error "the result of flattenDivPut_ should be a singleton list"
+
+
+-- concat [GTree CTag] will throw away the deleted elements (empty list)
+flattenDivPut_ :: GTree CTag -> State [GTree CTag] [GTree CTag]
+flattenDivPut_ node = case node of
+  tag@(GTree (CTag Block (Left CDiv) attrs NormalClose) subtags) ->
+    State.get >>= \v' -> case v' of
+      (v:vs) -> do
+        newsubtags <- mapM flattenDivPut_ subtags
+        let remainV = drop (countBlockElement tag) v'
+        State.put remainV
+        return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)]
+      []    -> return []
+  tag@(GTree (CTag Block (Left _) _ NormalClose) _) ->
+    State.get >>= \v' -> case v' of
+      (v:vs) -> State.put vs >> return [v]
+      []     -> return []
+  tag@(GTree (CTag Block (Right "body") attrs NormalClose) subtags) ->
+    State.get >>= \v' -> case v' of
+      (v:vs) -> do
+        newsubtags <- mapM flattenDivPut_ subtags
+        let remainV = drop (countBlockElement tag) v'
+        --traceM ("COUNTELEMENT:\n:" ++ show (countBlockElement tag))
+        State.put remainV
+        return [GTree (CTag Block (Right "body") attrs NormalClose) (concat newsubtags ++ remainV)]
+      []    -> return $ [GTree (CTag Block (Right "body") attrs NormalClose) []]
+  _ -> error "error raised in flattenDivPut_. The given source is not a block element."
+
+
+countBlockElement :: GTree CTag -> Int
+countBlockElement (GTree (CTag Block (Left CPara) _ _) _) = 1
+countBlockElement (GTree (CTag Block (Left (CHead _)) _ _) _) = 1
+countBlockElement (GTree (CTag Block (Left CBlockQuote) _ _) _) = 1
+countBlockElement (GTree (CTag Block (Left CPre) _ _) _) = 1
+countBlockElement (GTree (CTag Block (Left CUnorderedList) _ _) lis) = 1
+countBlockElement (GTree (CTag Block (Left COrderedList) _ _) lis) = 1
+countBlockElement (GTree (CTag Block (Left CDiv) _ _) subtags) = sum $ map countBlockElement subtags
+countBlockElement (GTree (CTag Block (Right "body") attrs NormalClose) subtags) = sum $ map countBlockElement subtags
+-- count <li> blocks are not counted
+
+
+
+lensConcatEntityStr :: BiGUL [AbsInline] [AbsInline]
+lensConcatEntityStr = emb concatEntityStr divideEntityStr
+
+concatEntityStr :: [AbsInline] -> [AbsInline]
+concatEntityStr (AbsStr x : AbsStr y : strs)
+  | not (isSpace (head x)) && not (isSpace (head y)) = concatEntityStr (AbsStr (x ++ y) : strs)
+  | otherwise = AbsStr x : concatEntityStr (AbsStr y : strs)
+concatEntityStr (x : y : strs) = x : concatEntityStr (y:strs)
+concatEntityStr strs = strs
+
+
+divideEntityStr :: [AbsInline] -> [AbsInline] -> [AbsInline]
+divideEntityStr _ viewStr = concatMap refine viewStr
+  where refine :: AbsInline -> [AbsInline]
+        refine (AbsStr str) =
+          let (a,b) = break pred str
+          in  if null b
+                then if null a then [] else [AbsStr a]
+                else if pred (head b)
+                      then if null a then AbsStr [(head b)] : refine (AbsStr (tail b)) else AbsStr a : AbsStr [(head b)] : refine (AbsStr (tail b))
+                      else error "should not reach here. divideEntityStr."
+        refine a = [a]
+        pred e = elem e ['<','>','&']

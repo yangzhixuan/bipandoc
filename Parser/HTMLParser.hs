@@ -285,11 +285,6 @@ pTagText = do
   <?> "pTagText"
 
 
---pEntitySpace :: PU HTML
---pEntitySpace =
---  (try (string "&nbsp;") >> (return $ GTree (CTagText NotDecidedTextMark (Left EntitySpace1)) [])) <|>
---  (string "&#160;" >> (return $ GTree (CTagText NotDecidedTextMark (Left EntitySpace2)) []))
-
 pTagComment :: PU HTML
 pTagComment = do
   string "<!--"
