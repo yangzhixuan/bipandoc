@@ -1,3 +1,4 @@
+
 import qualified Generics.BiGUL
 import qualified Generics.BiGUL.Interpreter as BiGUL
 import qualified Generics.BiGUL.TH
@@ -34,21 +35,17 @@ optsWithInfo = OA.info (OA.helper <*> optsParser) (OA.fullDesc <> OA.progDesc "S
 
 get :: Options -> String -> Maybe AbsDocument
 get opt src = case srcFormat opt of
-
     "html" -> BiGUL.get HTMLBX.htmlBX (HTMLParser.parseHTML src)
-
-    "markdown" -> BiGUL.get MarkdownBX.markdownBX (MarkdownParser.parseMarkdown src)
-
+    "markdown" -> BiGUL.get MarkdownBX.markdownBX (MarkdownParser.parseMarkdown (addNewline src))
     f -> error ("Invalid source format: " ++ f)
+    where addNewline s = if null s || last s /= '\n' then s ++ "\n" else s
 
 getTrace :: Options -> String -> BiGULTrace
 getTrace opt src = case srcFormat opt of
-
     "html" -> BiGUL.getTrace HTMLBX.htmlBX (HTMLParser.parseHTML src)
-
-    "markdown" -> BiGUL.getTrace MarkdownBX.markdownBX (MarkdownParser.parseMarkdown src)
-
+    "markdown" -> BiGUL.getTrace MarkdownBX.markdownBX (MarkdownParser.parseMarkdown (addNewline src))
     f -> error ("Invalid source format: " ++ f)
+    where addNewline s = if null s || last s /= '\n' then s ++ "\n" else s
 
 
 put :: Options -> String -> AbsDocument -> Maybe String
@@ -95,7 +92,7 @@ main = do
     src <- hGetContents srcH
     let viewM = get opts src
 
-    -- MarkdownParser.putPretty viewM
+    MarkdownParser.putPretty viewM
 
     if isNothing viewM
        then do
