@@ -128,11 +128,11 @@ printCodeLine defaultIndent (CodeLine ind code) = printIndent defaultIndent ind 
 --------- Parsers ----------------
 ----------------------------------
 
-data ParserStatus = ParserStatus { inEmph :: Bool, inLink :: Bool, indents :: [Indentation], skipIndentOnce :: Bool } deriving (Show)
+data ParserStatus = ParserStatus { inStrong :: Bool, inEmph :: Bool, inLink :: Bool, indents :: [Indentation], skipIndentOnce :: Bool } deriving (Show)
 
 data Indentation = BlockquoteIndentation | SpaceIndentation Int deriving (Show)
 
-defaultStatus = ParserStatus False False [] False
+defaultStatus = ParserStatus False False False [] False
 
 markdown ::  Parsec String ParserStatus MarkdownDoc
 markdown = do
@@ -143,7 +143,7 @@ markdown = do
 parseMarkdown :: String -> MarkdownDoc
 parseMarkdown str = 
     case parseRes of
-        Left _ -> MarkdownDoc [BlankLine DefaultIndent "parsing failed, invalid markdown"]
+        Left s -> MarkdownDoc [BlankLine DefaultIndent (show s)]
         Right doc -> doc
     where parseRes = runParser markdown defaultStatus "" str
 
@@ -407,25 +407,31 @@ spaceInline = try $ do
 
 emph :: Parsec String ParserStatus Inline
 emph = try $ do
-    lookAhead $ char '*' >> many1 (notBlankline >> notFollowedBy (char '*') >> anyChar) >> char '*'
-    char '*'
     st <- getState
-    modifyState (\st -> st{inEmph = True})
-    inlines <- many1 inline
-    putState st
-    char '*'
-    return $ Emph inlines
+    if inEmph st || inStrong st
+       then fail "nested emph is not allowed"
+       else do
+         lookAhead $ char '*' >> notFollowedBy (char '*') >> many1 (notFollowedBy (char '*') >> anyChar) >> char '*'
+         char '*'
+         modifyState (\st -> st{inEmph = True})
+         inlines <- many1 inline
+         modifyState (\st -> st{inEmph = False})
+         char '*'
+         return $ Emph inlines
 
 strong :: Parsec String ParserStatus Inline
 strong = try $ do
-    lookAhead $ string "**" >> many (notBlankline >> notFollowedBy (string "**") >> anyChar) >> string "**"
-    string "**"
     st <- getState
-    modifyState (\st -> st{inEmph = True})
-    inlines <- many1 inline
-    putState st
-    string "**"
-    return $ Strong inlines
+    if inStrong st || inEmph st
+       then fail "nested strong is not allowed"
+       else do
+         lookAhead $ string "**" >> many1 (notFollowedBy (string "**") >> anyChar) >> string "**"
+         string "**"
+         modifyState (\st -> st{inStrong = True})
+         inlines <- many1 inline
+         modifyState (\st -> st{inStrong = False})
+         string "**"
+         return $ Strong inlines
 
 escapedCharInline :: Parsec String ParserStatus Inline
 escapedCharInline = try $ do
@@ -488,8 +494,10 @@ strInline = do
     st <- getState
     chs <- many1 $ (notFollowedByAny specialInlines) >>
                     satisfy (\c -> c /= '\n' && (not (inEmph st) || c /= '*')
+                                             && (not (inStrong st) || c /= '*')
                                              && (not (inLink st) || c /= ']'))
     return $ Str chs
+
 
 inline :: Parsec String ParserStatus Inline
 inline = choice ( strInline : specialInlines)
