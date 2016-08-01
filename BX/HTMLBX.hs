@@ -59,7 +59,7 @@ blockListBX =
         , $(adaptiveSV [p| _:_ |] [p| [] |] ) (\_ _ -> [])
 
           -- add more source elements
-        , $(adaptiveSV [p| [] |] [p| _:_ |] ) (\_ v -> [craeteBlock (head v)])
+        , $(adaptiveSV [p| [] |] [p| _:_ |] ) (\_ v -> [createBlock (head v)])
         ]
 
 
@@ -124,13 +124,9 @@ blockBX =
          ==> \_ _ -> GTree (CTag Block (Left CPre) [] NormalClose)
                            [GTree (CTag Inline (Left CCode) [] NormalClose) [ GTree (CTagCode "") [] ]]
        ]
-  where --setextLineBX = emb (\s -> if head s == '=' then 1 else 2)
-                          --(\line level -> replicate (length line) (if level == 1 then '=' else '-'))
 
-
-
-craeteBlock :: AbsBlock -> GTree CTag
-craeteBlock v = case v of
+createBlock :: AbsBlock -> GTree CTag
+createBlock v = case v of
   AbsPara _ -> GTree (CTag Block (Left CPara) [] NormalClose) []
   AbsHeading _ _ -> GTree (CTag Block (Left (CHead 1)) [] NormalClose) []
   AbsUnorderedList _ -> GTree (CTag Block (Left CUnorderedList) [] NormalClose) []
@@ -158,15 +154,8 @@ orderedListItemBX = $(update [p| GTree (CTag Block (Left CListItem) _ _ ) blocks
 
 inlineBX :: BiGUL (GTree CTag) AbsInline
 inlineBX =
-  Case [
-         -- Case: AbsStr. not a whitespace string
-         $(normalSV [p| GTree (CTagText InlineText (TR _)) [] |] [p| AbsStr _ |]
-                    [p| GTree (CTagText InlineText (TR _)) [] |])
-         ==> $(update [p| GTree (CTagText InlineText (TR str)) [] |] [p| AbsStr str |]
-                      [d| str = Replace |])
-
-         -- Case: Emph
-       , $(normalSV [p| GTree (CTag Inline (Left CEmph) _ NormalClose) _ |] [p| AbsEmph _ |]
+  Case [ -- Case: Emph
+         $(normalSV [p| GTree (CTag Inline (Left CEmph) _ NormalClose) _ |] [p| AbsEmph _ |]
                     [p| GTree (CTag Inline (Left CEmph) _ NormalClose) _ |])
          ==> $(update [p| GTree (CTag Inline (Left CEmph) _ NormalClose) subs |] [p| AbsEmph subs |]
                       [d| subs = mapLens inlineBX createInline `Compose` lensConcatEntityStr |])
@@ -201,32 +190,38 @@ inlineBX =
                     [| \(GTree (CTagText InlineText (TM str)) []) -> str /= "\n" |])
          ==> Skip (const (AbsStr " "))
 
-      -- Case:  &lt;
+          -- Case:  &lt;
        , $(normalSV [p| GTree (CTagText InlineText (TL EntityLT1)) [] |] [p| AbsStr "<" |]
                     [p| GTree (CTagText InlineText (TL EntityLT1)) [] |])
          ==> Skip (const (AbsStr "<"))
-      -- "&#60;"
+          -- "&#60;"
        , $(normalSV [p| GTree (CTagText InlineText (TL EntityLT2)) [] |] [p| AbsStr "<" |]
                     [p| GTree (CTagText InlineText (TL EntityLT2)) [] |])
          ==> Skip (const (AbsStr "<"))
 
-      -- Case:  &gt;
+          -- Case:  &gt;
        , $(normalSV [p| GTree (CTagText InlineText (TL EntityGT1)) [] |] [p| AbsStr ">" |]
                     [p| GTree (CTagText InlineText (TL EntityGT1)) [] |])
          ==> Skip (const (AbsStr ">"))
-      -- "&#62;"
-       , $(normalSV [p| GTree (CTagText InlineText (TL EntityLT2)) [] |] [p| AbsStr ">" |]
-                    [p| GTree (CTagText InlineText (TL EntityLT2)) [] |])
+          -- "&#62;"
+       , $(normalSV [p| GTree (CTagText InlineText (TL EntityGT2)) [] |] [p| AbsStr ">" |]
+                    [p| GTree (CTagText InlineText (TL EntityGT2)) [] |])
          ==> Skip (const (AbsStr ">"))
 
-      -- Case:  "&amp;"
+          -- Case:  "&amp;"
        , $(normalSV [p| GTree (CTagText InlineText (TL EntityAmp1)) [] |] [p| AbsStr "&" |]
                     [p| GTree (CTagText InlineText (TL EntityAmp1)) [] |])
          ==> Skip (const (AbsStr "&"))
-      -- "&#38;"
+          -- "&#38;"
        , $(normalSV [p| GTree (CTagText InlineText (TL EntityAmp2)) [] |] [p| AbsStr "&" |]
                     [p| GTree (CTagText InlineText (TL EntityAmp2)) [] |])
          ==> Skip (const (AbsStr "&"))
+
+          -- Case: AbsStr. not a whitespace string
+       , $(normalSV [p| GTree (CTagText InlineText (TR _)) [] |] [p| AbsStr _ |]
+                    [p| GTree (CTagText InlineText (TR _)) [] |])
+         ==> $(update [p| GTree (CTagText InlineText (TR str)) [] |] [p| AbsStr str |]
+                      [d| str = Replace |])
 
          -- Case: Code <code> ... </code>
        , $(normalSV [p| GTree (CTag Inline (Left CCode) _ NormalClose) _ |] [p| AbsInlineCode _ |]
@@ -250,7 +245,12 @@ inlineBX =
 
        , $(adaptiveSV [p| _ |] [p| AbsStr " " |])
          ==> \_ _ -> GTree (CTagText InlineText (TM " ")) []
-
+       , $(adaptiveSV [p| _ |] [p| AbsStr "<" |])
+         ==> \_ _ -> GTree (CTagText InlineText (TL EntityLT1)) []
+       , $(adaptiveSV [p| _ |] [p| AbsStr ">" |])
+         ==> \_ _ -> GTree (CTagText InlineText (TL EntityGT1)) []
+       , $(adaptiveSV [p| _ |] [p| AbsStr "&" |])
+         ==> \_ _ -> GTree (CTagText InlineText (TL EntityAmp1)) []
        , $(adaptiveSV [p| _ |] [p| AbsStr _ |])
          ==> \_ _ -> GTree (CTagText InlineText (TR "")) []
 
@@ -281,6 +281,9 @@ inlineBX =
 createInline :: AbsInline -> GTree CTag
 createInline v = case v of
   AbsStr " " -> GTree (CTagText InlineText (TM " ")) []
+  AbsStr "<" -> GTree (CTagText InlineText (TL EntityLT1)) []
+  AbsStr ">" -> GTree (CTagText InlineText (TL EntityGT1)) []
+  AbsStr "&" -> GTree (CTagText InlineText (TL EntityAmp1)) []
   AbsStr _ -> GTree (CTagText InlineText (TR "newly created text to be replaced")) []
   AbsEmph _ -> GTree (CTag Inline (Left CEmph) [] NormalClose) []
   AbsStrong _ -> GTree (CTag Inline (Left CStrong) [] NormalClose) []
@@ -422,3 +425,12 @@ divideEntityStr _ viewStr = concatMap refine viewStr
                       else error "should not reach here. divideEntityStr."
         refine a = [a]
         pred e = elem e ['<','>','&']
+
+emptyHTML :: HTMLDoc
+emptyHTML = HTMLDoc ""  doctype " " html "\n"
+      where doctype = "<!DOCTYPE HTML>"
+            html    = (GTree (CTag Block (Right "html") [] NormalClose)
+                             [GTree (CTagText OtherText (TR "\n")) []
+                             ,GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (TR "\n")) []]
+                             ,GTree (CTagText OtherText (TR "\n  ")) []
+                             ,GTree (CTag Block (Right "body") [] NormalClose) []])
