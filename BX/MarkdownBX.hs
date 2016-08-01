@@ -94,7 +94,7 @@ blockBX =
 
          , $(normalSV [p| FencedCode _ _ _ _ _ _ _ |] [p| AbsCode _ |] [p| FencedCode _ _ _ _ _ _ _ |])
            ==> $(update [p| FencedCode _ _ _ codes _ _ _ |] [p| AbsCode codes |]
-                        [d| codes = codeBX |])
+                        [d| codes = codeBX' |])
 
          , $(adaptiveSV [p| _ |] [p| AbsCode _ |])
            --- ==> \s v -> IndentedCode []
@@ -114,6 +114,14 @@ blockBX =
                                         (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind (vc ++ "\n"))
                                                      (zip (s ++ repeat (CodeLine DefaultIndent "\n")) (lines v)))
                              ]
+
+               -- codeBX' always add a newline to code to support AbsCode terminating without a newline.
+               codeBX' =  emb (removeNewline . concatMap (\(CodeLine ind code) -> code))
+                              (\s v -> map (\((CodeLine ind _), vc) -> CodeLine ind (vc ++ "\n"))
+                                           (zip (s ++ repeat (CodeLine DefaultIndent "\n")) (lines (v ++ "\n"))))
+                   where removeNewline "" = ""
+                         removeNewline s = init s
+
                createInline = const $ Str ""
                generateFence str = tryFence "~~~"
                  where tryFence s = if Text.isInfixOf (Text.pack s) (Text.pack str)
