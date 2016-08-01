@@ -465,28 +465,6 @@ recogEntities2 t@(GTree (CTagText mk0 (TR str)) []) = concat $ recogEntities3 mk
 recogEntities2 (GTree (CTag mk0 tn attrs mk1) subtag) = [GTree (CTag mk0 tn attrs mk1) (concatMap recogEntities2 subtag)]
 recogEntities2 t = [t]
 
---recogEntities3 :: TextMark -> String -> String -> [[HTML]]
---recogEntities3 mk acc (a:b:c:d:rem) =
---  (:) (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []] ) $
---    case [a,b,c,d] of
---      "&gt;" -> [GTree (CTagText mk (TL EntityGT1)) []] : recogEntities3 mk [] rem
---      "&lt;" -> [GTree (CTagText mk (TL EntityLT1)) []] : recogEntities3 mk [] rem
---      _      -> case rem of
---        e:rem' -> case [a,b,c,d,e] of
---          "&#60;" -> [GTree (CTagText mk (TL EntityLT2)) []] : recogEntities3 mk [] rem'
---          "&#62;" -> [GTree (CTagText mk (TL EntityGT2)) []] : recogEntities3 mk [] rem'
---          "&amp;" -> [GTree (CTagText mk (TL EntityAmp1)) []] : recogEntities3 mk [] rem'
---          "&#38;" -> [GTree (CTagText mk (TL EntityAmp2)) []] : recogEntities3 mk [] rem'
---          _       -> case rem' of
---            f:rem'' -> case [a,b,c,d,e,f] of
---              "&nbsp;" -> [GTree (CTagText mk (TL EntitySpace1)) []] : recogEntities3 mk [] rem''
---              "&#160;" -> [GTree (CTagText mk (TL EntitySpace2)) []] : recogEntities3 mk [] rem''
---              _        -> recogEntities3 mk (a:acc) (b:c:d:e:f:rem'')
---            _       -> recogEntities3 mk (a:acc) (b:c:d:e:rem')
---        _      -> recogEntities3 mk (a:acc) (b:c:d:rem)
---recogEntities3 mk acc rem =
---  (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TR rem)) []] : []
-
 recogEntities3 :: TextMark -> String -> String -> [[HTML]]
 recogEntities3 mk acc ('&':'n':'b':'s':'p':';' :rem) = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntitySpace1)) []] : recogEntities3 mk [] rem
 recogEntities3 mk acc ('&':'#':'1':'6':'0':';' :rem) = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntitySpace2)) []] : recogEntities3 mk [] rem

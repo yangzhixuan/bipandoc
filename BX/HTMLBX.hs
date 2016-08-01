@@ -15,6 +15,8 @@ import Text.Megaparsec hiding (State)
 import qualified System.IO.Strict as IOS
 import Control.Monad.State as State
 
+import Debug.Trace
+import Text.Show.Pretty (ppShow)
 
 htmlBX :: BiGUL HTMLDoc AbsDocument
 htmlBX = $(update [p| HTMLDoc _ _ _ html _ |] [p| html |]
@@ -34,13 +36,6 @@ refineBX1 =
                      [p| GTree (CTag Block (Right "body") _ NormalClose) _ : [] |]) $
             $(update [p| [body] |] [p| body |] [d| body = flattenDiv `Compose` blockListBX |])
         ]
---refineBX1 :: BiGUL [GTree CTag] [AbsBlock]
---refineBX1 =
---  Case  [ $(normalSV [p| GTree (CTag Block (Right "body") _ NormalClose) _ : [] |] [p| _ |]
---                     [p| GTree (CTag Block (Right "body") _ NormalClose) _ : [] |]) $
---            $(update [p| [GTree (CTag Block (Right "body") _ NormalClose) subs] |] [p| subs |] [d| subs = blockListBX |])
---        ]
-
 
 -- kind of filter-GTree, but do not test the given node. The filter actually statrs from its children list.
 filterGTree :: (Eq a, Show a) => (GTree a -> Bool) -> BiGUL (GTree a) (GTree a)
@@ -48,28 +43,12 @@ filterGTree p = $(update [p| GTree node subs |] [p| GTree node subs |]
                          [d| node = Replace; subs = filterLens p `Compose` mapLens (filterGTree p) id |])
 
 
-
 -- test this idea: skip dividing blocks such as "div", "span" ...
 blockListBX :: BiGUL [GTree CTag] [AbsBlock]
 blockListBX =
   Case  [ $(normalSV [p| [] |] [p| [] |] [p| [] |] ) ==> $(update [p| [] |] [p| [] |] [d|  |])
 
-        -- take the elements in "div" "span", etc. out
-        --, $(normalSV [p| GTree (CTag Block (Left CDiv) _ NormalClose) (_:_) : _ |] [p| _:_ |]
-        --             [p| GTree (CTag Block (Left CDiv) _ NormalClose) (_:_) : _ |] ) $
-        --      $(rearrS [| \( (GTree (CTag Block (Left CDiv) attrs NormalClose) (c:contents)) : blocks) ->
-        --                   (c, (GTree (CTag Block (Left CDiv) attrs NormalClose) contents) : blocks) |]) $
-        --        $(update [p| (c, cbs) |] [p| c:cbs |]
-        --                 [d| c = blockBX; cbs = blockListBX |])
-
-        ---- drop the empty "div", etc.
-        --, $(normalSV [p| (GTree (CTag Block (Left CDiv) _ NormalClose) []) : _ |] [p| _ |]
-        --             [p| (GTree (CTag Block (Left CDiv) _ NormalClose) []) : _ |] ) $
-        --    $(rearrS [| \ (blk : blocks) -> blocks  |]) $
-        --        $(update [p| cbs |] [p| cbs |] [d| cbs = blockListBX |])
-
         -- span not handled yet
-
         -- normal inductive cases
         , $(normalSV [p| _:_ |] [p| _:_ |] [p| _:_ |] ) $
             $(update [p| c:cbs |] [p| c:cbs |] [d| c = blockBX; cbs = blockListBX |])
@@ -96,61 +75,43 @@ flattenDiv :: BiGUL (GTree CTag) [GTree CTag]
 flattenDiv = emb (dfsGet) (dfsPut')
 
 dfsGet :: GTree CTag -> [GTree CTag]
-dfsGet (GTree (CTag Block (Left CPara) attrs NormalClose) subtags) = [GTree (CTag Block (Left CPara) attrs NormalClose) subtags]
-dfsGet (GTree (CTag Block (Left (CHead i)) attrs NormalClose) subtags) = [GTree (CTag Block (Left (CHead i)) attrs NormalClose) subtags]
-dfsGet (GTree (CTag Block (Left CBlockQuote) attrs NormalClose) subtags) = [GTree (CTag Block (Left CBlockQuote) attrs NormalClose) subtags]
-dfsGet (GTree (CTag Block (Left CPre) attrs NormalClose) subtags) = [GTree (CTag Block (Left CPre) attrs NormalClose) subtags]
-dfsGet (GTree (CTag Block (Left CUnorderedList) attrs NormalClose) subtags) = [GTree (CTag Block (Left CUnorderedList) attrs NormalClose) subtags]
-dfsGet (GTree (CTag Block (Left COrderedList) attrs NormalClose) subtags) = [GTree (CTag Block (Left COrderedList) attrs NormalClose) subtags]
-dfsGet (GTree (CTag Block (Left CDiv) attrs NormalClose) subtags) = concatMap dfsGet subtags
-dfsGet (GTree (CTag Block (Right "body") attrs NormalClose) subtags) = concatMap dfsGet subtags
+dfsGet node = case node of
+  GTree (CTag Block (Left CDiv) _ NormalClose) subtags -> concatMap dfsGet subtags
+  b@(GTree (CTag Block (Left _) _ NormalClose) _) -> [b]
+  GTree (CTag Block (Right "body") _ NormalClose) subtags -> concatMap dfsGet subtags
+  _ -> error "error raised in dfsGet. The given source is not a block element."
 
 
 dfsPut' = \s v -> case State.evalState (dfsPut s) v of
-  [tag] -> tag
-  _     -> error "the result of dfsPut should be a singleton list"
+  [tag] -> trace ("\n\ntag\n\n" ++ ppShow tag) $ tag
+  err     -> trace ("\n\ntag\n\n" ++ ppShow err) $ error "the result of dfsPut should be a singleton list"
 
 
 -- concat [GTree CTag] will throw away the deleted elements (empty list)
 dfsPut :: GTree CTag -> State [GTree CTag] [GTree CTag]
-dfsPut (GTree (CTag Block (Left CPara) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
-    (v:vs) -> State.put vs >> return [v]
-    []     -> return []
-dfsPut (GTree (CTag Block (Left (CHead i)) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
-    (v:vs) -> State.put vs >> return [v]
-    []     -> return []
-dfsPut (GTree (CTag Block (Left CBlockQuote) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
-    (v:vs) -> State.put vs >> return [v]
-    []     -> return []
-dfsPut (GTree (CTag Block (Left CPre) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
-    (v:vs) -> State.put vs >> return [v]
-    []     -> return []
-dfsPut (GTree (CTag Block (Left CUnorderedList) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
-    (v:vs) -> State.put vs >> return [v]
-    []     -> return []
-dfsPut (GTree (CTag Block (Left COrderedList) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
-    (v:vs) -> State.put vs >> return [v]
-    []     -> return []
-
-dfsPut hehe@(GTree (CTag Block (Left CDiv) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
-    (v:vs) -> do
-      newsubtags <- mapM dfsPut subtags
-      let remainV = drop (countBlockElement hehe) v'
-      State.put remainV
-      if length remainV == 0
-        then return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)]
-        --else if length remainV > 0
-        else return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)] ++ remainV
-dfsPut hehe@(GTree (CTag Block (Right "body") attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
-    (v:vs) -> do
-      newsubtags <- mapM dfsPut subtags
-      let remainV = drop (countBlockElement hehe) v'
-      State.put remainV
-      if length remainV == 0
-        then return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)]
-        else return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)] ++ remainV
-
-
+dfsPut node = case node of
+  tag@(GTree (CTag Block (Left CDiv) attrs NormalClose) subtags) ->
+    State.get >>= \v' -> case v' of
+      (v:vs) -> do
+        newsubtags <- mapM dfsPut subtags
+        let remainV = drop (countBlockElement tag) v'
+        State.put remainV
+        return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)]
+      []    -> return []
+  tag@(GTree (CTag Block (Left _) _ NormalClose) _) ->
+    State.get >>= \v' -> case v' of
+      (v:vs) -> State.put vs >> return [v]
+      []     -> return []
+  tag@(GTree (CTag Block (Right "body") attrs NormalClose) subtags) ->
+    State.get >>= \v' -> case v' of
+      (v:vs) -> do
+        newsubtags <- mapM dfsPut subtags
+        let remainV = drop (countBlockElement tag) v'
+        traceM ("COUNTELEMENT:\n:" ++ show (countBlockElement tag))
+        State.put remainV
+        return [GTree (CTag Block (Right "body") attrs NormalClose) (concat newsubtags ++ remainV)]
+      []    -> return $ [GTree (CTag Block (Right "body") attrs NormalClose) []]
+  _ -> error "error raised in dfsPut. The given source is not a block element."
 
 
 countBlockElement :: GTree CTag -> Int
@@ -316,8 +277,8 @@ inlineBX =
          ==> Skip (const (AbsStr " "))
 
          -- Case: not soft break, not hard break. other spaces.
-       , $(normalSV [p| GTree (CTagText InlineText (TM _)) [] |] [p| AbsStr " " |]
-                    [p| GTree (CTagText InlineText (TM _)) [] |])
+       , $(normalSV [| \(GTree (CTagText InlineText (TM str)) []) -> str /= "\n" |] [p| AbsStr " " |]
+                    [| \(GTree (CTagText InlineText (TM str)) []) -> str /= "\n" |])
          ==> Skip (const (AbsStr " "))
 
          -- Case: Code <code> ... </code>
