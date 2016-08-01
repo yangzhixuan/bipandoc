@@ -82,28 +82,18 @@ blockListBX =
         ]
 
 
---flattenDivGet :: [GTree CTag] -> [GTree CTag]
---flattenDivGet s = case s of
---  GTree (CTag Block (Left CDiv) attrs NormalClose) subtags : ss  -> (flattenDivGet subtags) ++ ss
---  others -> others
+t233 = State.evalState (dfsPut source233) view233
 
---flattenDivPut :: [GTree CTag] -> [GTree CTag] -> [GTree CTag]
---flattenDivPut s v = case s of
---  GTree (CTag Block (Left CDiv) attrs NormalClose) subtags : ss  ->
---    let lv = length v  -- here should countBlockElements v == length v
---        ls = countBlockElement subtags
---    in  if ls < lv
---          then GTree (CTag Block (Left CDiv) attrs NormalClose) (flattenDivPut subtags (take ls v)) : (flattenDivPut ss (drop ls v))
---          else if ls == lv 
---                 then [GTree (CTag Block (Left CDiv) attrs NormalClose) (flattenDivPut subtags v)]
---                 else 
+source233 = GTree (CTag Block (Left CDiv) [] NormalClose)
+            [GTree (CTag Block (Left CPara) [] NormalClose) []
+            ,GTree (CTag Block (Left (CHead 3)) [] NormalClose) []]
+
+view233 = [GTree (CTag Block (Left (CHead 6)) [] NormalClose) []
+          ]
+
 
 flattenDiv :: BiGUL (GTree CTag) [GTree CTag]
 flattenDiv = emb (dfsGet) (dfsPut')
-
---dfsGet' = \s -> case dfsGet s of
---  [tag] -> tag
---  _     -> error "the result of dfsGet should be a singleton list"
 
 dfsGet :: GTree CTag -> [GTree CTag]
 dfsGet (GTree (CTag Block (Left CPara) attrs NormalClose) subtags) = [GTree (CTag Block (Left CPara) attrs NormalClose) subtags]
@@ -116,16 +106,6 @@ dfsGet (GTree (CTag Block (Left CDiv) attrs NormalClose) subtags) = concatMap df
 dfsGet (GTree (CTag Block (Right "body") attrs NormalClose) subtags) = concatMap dfsGet subtags
 
 
-t233 = State.evalState (dfsPut source233) view233
-
-source233 = GTree (CTag Block (Left CDiv) [] NormalClose)
-            [GTree (CTag Block (Left CPara) [] NormalClose) []
-            ,GTree (CTag Block (Left (CHead 3)) [] NormalClose) []]
-
-view233 = [GTree (CTag Block (Left (CHead 6)) [] NormalClose) []
-          ]
-
-
 dfsPut' = \s v -> case State.evalState (dfsPut s) v of
   [tag] -> tag
   _     -> error "the result of dfsPut should be a singleton list"
@@ -133,52 +113,26 @@ dfsPut' = \s v -> case State.evalState (dfsPut s) v of
 
 -- concat [GTree CTag] will throw away the deleted elements (empty list)
 dfsPut :: GTree CTag -> State [GTree CTag] [GTree CTag]
-dfsPut (GTree (CTag Block (Left CPara) attrs NormalClose) subtags) = do
-  v' <- State.get
-  case v' of
-    (v:vs) -> do
-      State.put vs
-      return [v]
+dfsPut (GTree (CTag Block (Left CPara) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
+    (v:vs) -> State.put vs >> return [v]
     []     -> return []
-dfsPut (GTree (CTag Block (Left (CHead i)) attrs NormalClose) subtags) = do
-  v' <- State.get
-  case v' of
-    (v:vs) -> do
-      State.put vs
-      return [v]
+dfsPut (GTree (CTag Block (Left (CHead i)) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
+    (v:vs) -> State.put vs >> return [v]
     []     -> return []
-dfsPut (GTree (CTag Block (Left CBlockQuote) attrs NormalClose) subtags) = do
-  v' <- State.get
-  case v' of
-    (v:vs) -> do
-      State.put vs
-      return [v]
+dfsPut (GTree (CTag Block (Left CBlockQuote) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
+    (v:vs) -> State.put vs >> return [v]
     []     -> return []
-dfsPut (GTree (CTag Block (Left CPre) attrs NormalClose) subtags) = do
-  v' <- State.get
-  case v' of
-    (v:vs) -> do
-      State.put vs
-      return [v]
+dfsPut (GTree (CTag Block (Left CPre) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
+    (v:vs) -> State.put vs >> return [v]
     []     -> return []
-dfsPut (GTree (CTag Block (Left CUnorderedList) attrs NormalClose) subtags) = do
-  v' <- State.get
-  case v' of
-    (v:vs) -> do
-      State.put vs
-      return [v]
+dfsPut (GTree (CTag Block (Left CUnorderedList) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
+    (v:vs) -> State.put vs >> return [v]
     []     -> return []
-dfsPut (GTree (CTag Block (Left COrderedList) attrs NormalClose) subtags) = do
-  v' <- State.get
-  case v' of
-    (v:vs) -> do
-      State.put vs
-      return [v]
+dfsPut (GTree (CTag Block (Left COrderedList) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
+    (v:vs) -> State.put vs >> return [v]
     []     -> return []
 
-dfsPut hehe@(GTree (CTag Block (Left CDiv) attrs NormalClose) subtags) = do
-  v' <- State.get
-  case v' of
+dfsPut hehe@(GTree (CTag Block (Left CDiv) attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
     (v:vs) -> do
       newsubtags <- mapM dfsPut subtags
       let remainV = drop (countBlockElement hehe) v'
@@ -187,19 +141,16 @@ dfsPut hehe@(GTree (CTag Block (Left CDiv) attrs NormalClose) subtags) = do
         then return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)]
         --else if length remainV > 0
         else return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)] ++ remainV
-dfsPut hehe@(GTree (CTag Block (Right "body") attrs NormalClose) subtags) = do
-  v' <- State.get
-  case v' of
+dfsPut hehe@(GTree (CTag Block (Right "body") attrs NormalClose) subtags) = State.get >>= \v' -> case v' of
     (v:vs) -> do
       newsubtags <- mapM dfsPut subtags
       let remainV = drop (countBlockElement hehe) v'
       State.put remainV
       if length remainV == 0
         then return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)]
-        --else if length remainV > 0
         else return $ [GTree (CTag Block (Left CDiv) attrs NormalClose) (concat newsubtags)] ++ remainV
 
-  --    []     -> ([GTree (CTag Block (Left CDiv) attrs NormalClose) []], [])
+
 
 
 countBlockElement :: GTree CTag -> Int
@@ -211,16 +162,8 @@ countBlockElement (GTree (CTag Block (Left CUnorderedList) _ _) lis) = 1
 countBlockElement (GTree (CTag Block (Left COrderedList) _ _) lis) = 1
 countBlockElement (GTree (CTag Block (Left CDiv) _ _) subtags) = sum $ map countBlockElement subtags
 countBlockElement (GTree (CTag Block (Right "body") attrs NormalClose) subtags) = sum $ map countBlockElement subtags
-
 -- count <li> blocks are not counted
 
-
---countBlockElements :: [GTree CTag] -> Int
---countBlockElements (GTree (CTag Block (Left CDiv) _ _) subtags : ss) = countBlockElements subtags + countBlockElements ss
---countBlockElements (GTree (CTag Block (Left CPara) _ _) subtags : ss) = 1 + countBlockElements ss
---countBlockElements (GTree (CTag Block (Left CDiv) _ _) subtags : ss) = countBlockElements subtags + countBlockElements ss
---countBlockElements (s:ss) = 1 + countBlockElements ss
---countBlockElements []     = 0
 
 
 -- we follow the idea similar to lensMap: the strategy is matching by position.
