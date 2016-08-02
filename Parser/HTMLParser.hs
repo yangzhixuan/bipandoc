@@ -1,86 +1,26 @@
-{-# Language  PatternSynonyms, RecordWildCards, TemplateHaskell, TypeFamilies #-}
+{-# Language RecordWildCards #-}
 
--- todo: make spaces and linebreaks as a single separator in (CTagText Inline _)
 -- todo: keep spaces and linebreaks in <pre>. treat them as what they are
 
-module Parser.HTMLParser where
+module Parser.HTMLParser (parseHTML, prtDocument, isSupportedNode, emptyHTMLCST, emptyHTMLStr) where
 
+import Parser.HTMLParserDataType
 import Text.Megaparsec
 import Data.Char (isSpace)
+import Data.List (groupBy)
 import Data.Maybe (fromJust, fromMaybe)
 import Control.Monad (liftM, replicateM)
 import qualified Data.List.NonEmpty as DLN ( NonEmpty((:|)) )
 import Data.Map as Map (fromList, Map, lookup, union, singleton, keys, findWithDefault)
-import Data.List (groupBy)
+import Text.Show.Pretty (ppShow)
 
 import GHC.Generics
 import Generics.BiGUL
 import Generics.BiGUL.TH
 
-
-import Parser.Markdown (putPretty)
-
 import Debug.Trace
 
-data GTree a = GTree a [GTree a] deriving (Show, Eq)
-
-data HTMLDoc = HTMLDoc Spaces DocType Spaces HTML Spaces deriving (Show, Eq)
-type Spaces = String
-type DocType = String
-type HTML = GTree CTag
-
 type PU = Parsec Dec String
-
--- | A single HTML element.
---   There is no requirement for 'TagOpen' and 'TagClose' to match.
-
-data CTag =
-    CTag TagMark CTagName [Either Spaces Attribute] CloseMark -- TagName [Spaces | Attributes]
-  | CTagText TextMark TextContents    -- ^ A text node. Only a text node with TextMark InlineText will be passed to AST.
-                                      -- An InlineText node will be further marked as (TM Spaces) or (TR String)
-                                      -- But in the parsing stage, we always firstly mark it as TR String.
-                                      -- OtherText node will only be distinguished as either (TL Entity) or (TR String).
-  | CTagScript  String               -- ^ A script node
-  | CTagComment String               -- ^ A comment
-  | CTagCode    String               -- ^ verbatim code
-  | CDefaultTag
-  deriving (Show, Eq)
-
-data CloseMark = NormalClose | SelfClose | NoClose | NotDecidedCloseMark deriving (Show, Eq)
-data TagMark   = Block | Inline | NotDecidedTagMark      deriving (Show, Eq)
-data TextMark  = InlineText | OtherText | NotDecidedTextMark deriving (Show, Eq) -- text in block elements such as <p>, <h1>, pass to AST. | text outside block elements which will not be passed to AST.
-
-data TextContents = TL Entity | TM Spaces | TR String deriving (Show, Eq)
-data Entity = EntitySpace1 | EntitySpace2 | EntityAnd1 | EntityAmp1 | EntityAmp2
-            | EntityLT1    | EntityLT2    | EntityGT1  | EntityGT2
-            deriving (Show, Eq)
--- EntityXXX1 for &name;   EntityXXX2 for &#number;
-
-type CTagName = Either SupportedName OtherName
-type OtherName = String
-
-data Attribute = Attribute String String String deriving (Eq, Show) -- ("src", "   =  ", "\'heheSoManySpaces\'")
-type TagName = String
-type PreText = String
-
-data SupportedName =
-    CDiv            -- <div>
-  | CPara           -- <p>
-  | CCode           -- <code>
-  | CPre            -- <pre>
-  | CBlockQuote     -- <blockquote>
-  | COrderedList | CUnorderedList | CDefinitionList | CListItem    -- <ol>, <ul>, <dl>, <li>
-  | CHead Int -- <h1>, <h2> ... <h6>
-  | CHorizontalRule -- <hr>
-  | CBr      -- <br>
-  | CTable | CTableRow | CTableCell | CTableHeader     -- <table>, <tr>, <td>, <th>
-  | CEmph  | CStrong | CStrike          -- <em>, <strong>, <strike>
-  | CSuperscript | CSubscript    -- <sup>, <sub>
-  | CQuoted         -- <q>
-  | CCite           -- <cite>
-  | CLink         -- <link>
-  | CImg          -- <img>
-  deriving (Show, Eq)
 
   --   CHTML           -- <html>
   -- | CHead           -- <html>
@@ -151,13 +91,13 @@ parseDoc = do
   <?> "parseDoc"
 
 anyNode :: PU HTML
-anyNode = try pScriptTag <|>  try pTagCode <|> try pTagElement <|> try pTagComment <|> pTagText <?> "anyNode"
+anyNode = try pScriptTag <|>  try pTagCode <|> try pTagElement <|> try pTagComment <|> pTagText <?> "parse tags fail. maybe some tags are not closed properly"
 
 pHTML :: PU HTML
 pHTML = do
   (CTag _ tn sOrA _) <- pTagOpen
-  inner <- many anyNode
-  (string "</html>") <?> "expecting </html>"
+  inner <- many anyNode <?> "\tparse <head> or <body> fail. maybe they are not closed properly?"
+  (string "</html>") <?> "</html>, is <html> closed properly?"
   return $ GTree (CTag Block tn sOrA NormalClose) inner
   <?> "error in parsing html tag"
 
@@ -175,7 +115,6 @@ pTagElement = do
                 if iivt
                   then do
                     inner <- many (try cmtOrTxt) -- maybe some text or comment node...fml
-                    --tc    <- try pTagClose
                     try pTagClose
                     return $ GTree (CTag NotDecidedTagMark tn sOrA NormalClose) inner   -- though it's a void element, programmers do not obey the rule and put the ending tag.
                   else return $ GTree (CTag NotDecidedTagMark tn sOrA NoClose) []  -- this is the most expected tag format for void element.
@@ -242,10 +181,6 @@ pTagClose = do {string "</"; tn <- pTagName; char '>'; return $ tn} <?> "pTagClo
 trimCloseTag :: String -> String
 trimCloseTag x = drop 2 . take (length x - 1) $ x
 
--- how to deal with ("nbsp", ' ') ...
---escPairs = [("lt", '<'), ("gt", '>'), ("amp", '&'), ("cent","¢"), ("pound","£"),("yen","¥"),("euro","€"),("copy","©"),("reg","®")
---           ,("#60", "<"),("#62", ">"),("#38", "&"),("#162", "¢"),("#163", "£"),("#165", "¥"),("#8364", "€"),("#169", "©"),("#174", "®")]
-
 -- problematic. we do not know the original escaped char. is it in the form of &xxx;  or  &#yyy; ?
 escPairs = [("lt", '<'), ("gt", '>'), ("amp", '&') ,("#60", '<'),("#62", '>'),("#38", '&')]
 
@@ -263,16 +198,6 @@ pEscapedChar = try $ do
     s <- choice(map (try . string) (map fst escPairs))
     char ';'
     return $ fromJust (Map.lookup s escMap)
-
---pTagText :: PU HTML
---pTagText = do
---  c <- lookAhead (anyChar)
---  case c of
---    '<' -> unexpected (Label ((DLN.:|) '<' []) )
---    _   -> do
---          text <- someTill (pEscapedChar <|> anyChar) (lookAhead (string "<" <|> string ">" <|> string "&") )
---          return $ GTree (CTagText NotDecidedTextMark (Right text)) []
---  <?> "pTagText"
 
 pTagText :: PU HTML
 pTagText = do
@@ -473,28 +398,28 @@ recogEntities3 mk acc (x:rem) = recogEntities3 mk (x:acc) rem
 recogEntities3 mk acc [] = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : []
 
 
+refineDoc :: HTMLDoc -> HTMLDoc
+refineDoc (HTMLDoc s0 doctype s1 html s2) = HTMLDoc s0 doctype s1 (markTextNodeType . recogEntities $ html) s2
+
 -- to distinguish Inline TextNode and Other TextNode.
 -- to merge adjacent spaces together.
-refineDoc :: HTMLDoc -> HTMLDoc
-refineDoc (HTMLDoc s0 doctype s1 html s2) = HTMLDoc s0 doctype s1 (refine1 . recogEntities $ html) s2
-
-refine1 :: HTML -> HTML
-refine1 t@(GTree (CTag mk0 tn attrs mk1) subtags) =
+markTextNodeType :: HTML -> HTML
+markTextNodeType t@(GTree (CTag mk0 tn attrs mk1) subtags) =
   if isSubtreeInline t
-    then GTree (CTag mk0 tn attrs mk1) (concatMap refineInlineTag subtags)
-    else GTree (CTag mk0 tn attrs mk1) (map refine1 subtags)
-refine1 (GTree (CTagText NotDecidedTextMark (TR str)) []) = GTree (CTagText OtherText (TR str)) []
-refine1 t = t
+    then GTree (CTag mk0 tn attrs mk1) (concatMap markInlineTag subtags)
+    else GTree (CTag mk0 tn attrs mk1) (map markTextNodeType subtags)
+markTextNodeType (GTree (CTagText NotDecidedTextMark (TR str)) []) = GTree (CTagText OtherText (TR str)) []
+markTextNodeType t = t
 
 --TL Entity | TM Spaces | TR String
-refineInlineTag :: GTree CTag -> [GTree CTag]
-refineInlineTag (GTree (CTagText NotDecidedTextMark (TR str)) []) = concatMap divideAtLineBreak . map markSpace . sepString $ str
+markInlineTag :: GTree CTag -> [GTree CTag]
+markInlineTag (GTree (CTagText NotDecidedTextMark (TR str)) []) = concatMap divideAtLineBreak . map markSpace . sepString $ str
 -- eg:  (GTree (CTag Inline CStrong attrs NormalClose) subtext...)
 -- CTagCode is already set to Inline during the parsing stage.
-refineInlineTag (GTree (CTag Inline tn attrs mk1) subtags) = [(GTree (CTag Inline tn attrs mk1)) (concatMap refineInlineTag subtags)]
-refineInlineTag (GTree (CTagText NotDecidedTextMark (TL entity)) []) = [GTree (CTagText InlineText (TL entity)) []]
-refineInlineTag c = [c]
---refineInlineTag t = error $ "unexpected tag. tag should be text tag or inline tag: " ++ show t
+markInlineTag (GTree (CTag Inline tn attrs mk1) subtags) = [(GTree (CTag Inline tn attrs mk1)) (concatMap markInlineTag subtags)]
+markInlineTag (GTree (CTagText NotDecidedTextMark (TL entity)) []) = [GTree (CTagText InlineText (TL entity)) []]
+markInlineTag c = [c]
+--markInlineTag t = error $ "unexpected tag. tag should be text tag or inline tag: " ++ show t
 
 
 -- separate a string by spaces, and make each substring a GTree (CTagText InlineText ...) []
@@ -531,19 +456,28 @@ isSubtreeInline :: GTree CTag -> Bool
 isSubtreeInline (GTree (CTag _ (Left tn) _ _) _) = tn `elem` [CPara, CHead 1, CHead 2, CHead 3, CHead 4, CHead 5, CHead 6]
 isSubtreeInline _ = False
 
+
 ------------------------
 parseHTML :: String -> HTMLDoc
-parseHTML src = refineDoc $ either (error . show) id (parse parseDoc "" src)
+parseHTML src = refineDoc $ either (error . parseErrorPretty) id (runParser parseDoc "" src)
 
-defaultHTML = "<!DOCTYPE HTML>\n<html>\n<head>\n</head>\n<body>\n</body>\n</html>"
+emptyHTMLCST :: HTMLDoc
+emptyHTMLCST = HTMLDoc ""  doctype " " html "\n"
+      where doctype = "<!DOCTYPE HTML>"
+            html    = (GTree (CTag Block (Right "html") [] NormalClose)
+                             [GTree (CTagText OtherText (TR "\n")) []
+                             ,GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (TR "\n")) []]
+                             ,GTree (CTagText OtherText (TR "\n  ")) []
+                             ,GTree (CTag Block (Right "body") [] NormalClose) []])
+
+emptyHTMLStr = "<!DOCTYPE HTML>\n<html>\n<head>\n</head>\n<body>\n</body>\n</html>"
 
 t1 :: IO ()
 t1 = do
   i <- readFile "test111.html"
-  let o  = either (error. show) id (parse parseDoc "1.html" i)
-      oo = refineDoc o
+  let oo  = parseHTML i
   putStrLn "html CST:"
-  putPretty oo
+  putStrLn (ppShow oo)
   putStrLn "print CST back:"
   putStrLn (prtDocument oo)
   putStrLn "\nequal?\n"
@@ -554,8 +488,3 @@ t1w = do
   i <- readFile "1.html"
   let o = either (error. show) show (parse parseDoc "1.html" i)
   writeFile "1o.html" o
-
-
-fromRight :: Either a b -> b
-fromRight (Right x) = x
-fromRight _         = error "the argument is not a Right value (of Either type)."

@@ -2,6 +2,7 @@ module HTMLQuickCheck where
 
 import Parser.Markdown
 import Parser.HTMLParser
+import Parser.HTMLParserDataType
 import BX.HTMLBX
 import BX.MarkdownBX
 import Abstract
@@ -14,9 +15,6 @@ import Test.QuickCheck
 
 import Generics.BiGUL
 import Generics.BiGUL.Interpreter
-
-
-
 
 
 testArgs :: Args

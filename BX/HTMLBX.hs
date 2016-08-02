@@ -11,6 +11,7 @@ import Abstract
 import BX.BXHelpers
 
 import Parser.HTMLParser
+import Parser.HTMLParserDataType
 import Text.Megaparsec hiding (State)
 import qualified System.IO.Strict as IOS
 import Control.Monad.State as State
@@ -18,7 +19,6 @@ import Control.Monad.State as State
 import Data.Char (isSpace)
 
 import Debug.Trace
-import Text.Show.Pretty (ppShow)
 
 htmlBX :: BiGUL HTMLDoc AbsDocument
 htmlBX = $(update [p| HTMLDoc _ _ _ html _ |] [p| html |]
@@ -425,12 +425,3 @@ divideEntityStr _ viewStr = concatMap refine viewStr
                       else error "should not reach here. divideEntityStr."
         refine a = [a]
         pred e = elem e ['<','>','&']
-
-emptyHTML :: HTMLDoc
-emptyHTML = HTMLDoc ""  doctype " " html "\n"
-      where doctype = "<!DOCTYPE HTML>"
-            html    = (GTree (CTag Block (Right "html") [] NormalClose)
-                             [GTree (CTagText OtherText (TR "\n")) []
-                             ,GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (TR "\n")) []]
-                             ,GTree (CTagText OtherText (TR "\n  ")) []
-                             ,GTree (CTag Block (Right "body") [] NormalClose) []])

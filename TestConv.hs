@@ -9,11 +9,11 @@ import qualified BX.MarkdownBX as BXM (markdownBX)
 import BX.HTMLBX
 
 import Parser.HTMLParser
+import Parser.HTMLParserDataType
 import Parser.Markdown
 
 import Text.Megaparsec
 
-import Text.Show.Pretty (ppShow)
 
 testGetPut1 :: IO ()
 testGetPut1 = do
@@ -22,8 +22,7 @@ testGetPut1 = do
   i <- readFile "tests/1.html"
   putStrLn "original HTML document:\n==================="
   putStrLn i
-  let htmlCST_= either (error. ppShow) id (parse parseDoc "noname" i)
-      htmlCST = refineDoc htmlCST_
+  let htmlCST= parseHTML i
       htmlAST = maybe (error "parse cst to ast error") id (get htmlBX htmlCST)
   putStrLn "CST of the HTML document"
   putStrLn ""
@@ -73,9 +72,8 @@ testPutToAnEmptyHTML = test1pModified
 pHTML1 :: IO HTMLDoc
 pHTML1 = do
   i <- readFile "tests/1.html"
-  let o  = either (error. ppShow) id (parse parseDoc "1.html" i)
-      oo = refineDoc o
-  return oo
+  let o  = parseHTML i
+  return o
 
 test1g :: IO ()
 test1g = do
@@ -86,9 +84,8 @@ test1g = do
 test1gTrace :: IO ()
 test1gTrace = do
   i <- readFile "tests/1.html"
-  let o  = either (error. ppShow) id (parse parseDoc "1.html" i)
-      oo = refineDoc o
-      ast = (getTrace htmlBX oo)
+  let o  = parseHTML i
+      ast = (getTrace htmlBX o)
   putStrLn (ppShow ast)
 
 
@@ -102,7 +99,7 @@ test1p = do
 test1pModified :: IO ()
 test1pModified = do
   cst <- pHTML1
-  let newS = emptyHTML
+  let newS = emptyHTMLCST
       ast = maybe (error "parse cst to ast error") id (get htmlBX cst)
       s'  = maybe (error "print ast to cst error") id (put htmlBX newS ast)
   putStrLn (prtDocument s')
@@ -110,27 +107,14 @@ test1pModified = do
 test1pModifiedTrace :: IO ()
 test1pModifiedTrace = do
   cst <- pHTML1
-  let newS = emptyHTML
+  let newS = emptyHTMLCST
       ast = maybe (error "parse cst to ast error") id (get htmlBX cst)
       s'  = putTrace htmlBX newS ast
   putStrLn (ppShow s')
-
-
-emptyHTML :: HTMLDoc
-emptyHTML = HTMLDoc ""  doctype " " html "\n"
-      where doctype = "<!DOCTYPE HTML>"
-            html    = (GTree (CTag Block (Right "html") [] NormalClose)
-                             [GTree (CTagText OtherText (TR "\n")) []
-                             ,GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (TR "\n")) []]
-                             ,GTree (CTagText OtherText (TR "\n  ")) []
-                             ,GTree (CTag Block (Right "body") [] NormalClose) []])
-
-
 getHTMLGTree :: IO (GTree CTag)
 getHTMLGTree = do
   i <- readFile "tests/1.html"
-  let o  = either (error. ppShow) id (parse parseDoc "1.html" i)
-      oo = refineDoc o
+  let oo  = parseHTML i
       HTMLDoc _ _ _ (GTree (CTag _ _ _ _) html) _ = oo
       html' = filter (\x -> case x of GTree (CTag _ (Right "body") _ _) _ -> True; _ -> False) html
   return (head html')
