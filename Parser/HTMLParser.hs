@@ -18,6 +18,8 @@ import GHC.Generics
 import Generics.BiGUL
 import Generics.BiGUL.TH
 
+import Control.Monad.Writer
+
 import Debug.Trace
 
 type PU = Parsec Dec String
@@ -310,7 +312,7 @@ alwaysSucceeds = liftM (: []) (lookAhead anyChar)
 -- void elements
 -- these elements has no closing tag. but we permit either <area ... >, <area ... />, or <area ...></area>
 isVoidElement :: String -> Bool
-isVoidElement = flip elem ["area", "base", "br", "col", "command", "embed", "hr", "img", "input", "keygen", "link", "meta", "param", "source", "track", "wbr"]
+isVoidElement = (`elem` ["area", "base", "br", "col", "command", "embed", "hr", "img", "input", "keygen", "link", "meta", "param", "source", "track", "wbr"])
 
 ------------------------
 -- printing function from CST to HTML
@@ -338,8 +340,32 @@ prtEntity EntityGT2 = "&#62;"
 prtEntity EntityAmp1 = "&amp;"
 prtEntity EntityAmp2 = "&#38;"
 
+------- entities to be supported ----------
+--EntityCent1
+--EntityCent2
+--EntityPound1
+--EntityPound2
+--EntityYen1
+--EntityYen2
+--EntityEuro1
+--EntityEuro2
+--EntityCopy1
+--EntityCopy2
+--EntityReg1
+--EntityReg2
 
-
+-- ¢ cent  "&cent";  "&#162";
+-- £ pound "&pound"; "&#163";
+-- ¥ yen "&yen"; "&#165";
+-- € euro  "&euro";  "&#8364";
+-- © copyright "&copy";  "&#169";
+-- ® registered trademark  "&reg"; "&#174";
+ 
+-- &#768;
+-- &#769;
+--̂ &#770;
+-- &#771;
+------- entities to be supported ----------
 
 flatSorAs :: [Either Spaces Attribute] -> String
 flatSorAs [] = ""
@@ -372,34 +398,46 @@ prtSupportedName CLink = "a"         ; prtSupportedName CImg = "img"
 ------------------------
 
 -- transfer the entities to the corresponding constructors.
-recogEntities :: HTML -> HTML
+recogEntities :: HTML -> Writer [String] HTML
 recogEntities t@(GTree (CTag mk0 tn attrs mk1) subtags) =
-  if isSubtreeInline t then (GTree (CTag mk0 tn attrs mk1) (concatMap recogEntities2 $ subtags))
-  else GTree (CTag mk0 tn attrs mk1) (map recogEntities subtags)
-recogEntities t = t
+  if isSubtreeInline t
+    then do res <- mapM recogEntities2 subtags
+            return (GTree (CTag mk0 tn attrs mk1) (concat res))
+    else liftM (GTree (CTag mk0 tn attrs mk1)) (mapM recogEntities subtags)
+recogEntities t = return t
 
 
 
-recogEntities2 :: HTML -> [HTML]
-recogEntities2 t@(GTree (CTagText mk0 (TR str)) []) = concat $ recogEntities3 mk0 [] str
-recogEntities2 (GTree (CTag mk0 tn attrs mk1) subtag) = [GTree (CTag mk0 tn attrs mk1) (concatMap recogEntities2 subtag)]
-recogEntities2 t = [t]
+recogEntities2 :: HTML -> Writer [String] [HTML]
+recogEntities2 t@(GTree (CTagText mk0 (TR str)) []) = recogEntities3 mk0 [] str >>= \res -> return (concat res)
+recogEntities2 (GTree (CTag mk0 tn attrs mk1) subtag) = mapM recogEntities2 subtag >>= \res -> return [GTree (CTag mk0 tn attrs mk1) (concat res)]
+recogEntities2 t = return [t]
 
-recogEntities3 :: TextMark -> String -> String -> [[HTML]]
-recogEntities3 mk acc ('&':'n':'b':'s':'p':';' :rem) = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntitySpace1)) []] : recogEntities3 mk [] rem
-recogEntities3 mk acc ('&':'#':'1':'6':'0':';' :rem) = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntitySpace2)) []] : recogEntities3 mk [] rem
-recogEntities3 mk acc ('&':'l':'t':';' :rem)         = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityLT1))    []] : recogEntities3 mk [] rem
-recogEntities3 mk acc ('&':'#':'6':'0':';' :rem)     = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityLT2))    []] : recogEntities3 mk [] rem
-recogEntities3 mk acc ('&':'g':'t':';' :rem)         = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityGT1))    []] : recogEntities3 mk [] rem
-recogEntities3 mk acc ('&':'#':'6':'2':';' :rem)     = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityGT2))    []] : recogEntities3 mk [] rem
-recogEntities3 mk acc ('&':'a':'m':'p':';' :rem)     = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityAmp1))   []] : recogEntities3 mk [] rem
-recogEntities3 mk acc ('&':'#':'3':'8':';' :rem)     = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL EntityAmp2))   []] : recogEntities3 mk [] rem
-recogEntities3 mk acc (x:rem) = recogEntities3 mk (x:acc) rem
-recogEntities3 mk acc [] = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : []
+recogEntities3 :: TextMark -> String -> String -> Writer [String] [[HTML]]
+recogEntities3 mk acc str = case str of
+  ('&':'n':'b':'s':'p':';' :rem) -> recogEntities3 mk [] rem >>= \val -> return $ mkData mk acc EntitySpace1 val
+  ('&':'#':'1':'6':'0':';' :rem) -> liftM (mkData mk acc EntitySpace2) (recogEntities3 mk [] rem)
+  ('&':'l':'t':';' :rem)         -> liftM (mkData mk acc EntityLT1) (recogEntities3 mk [] rem)
+  ('&':'#':'6':'0':';' :rem)     -> liftM (mkData mk acc EntityLT2) (recogEntities3 mk [] rem)
+  ('&':'g':'t':';' :rem)         -> liftM (mkData mk acc EntityGT1) (recogEntities3 mk [] rem)
+  ('&':'#':'6':'2':';' :rem)     -> liftM (mkData mk acc EntityGT2) (recogEntities3 mk [] rem)
+  ('&':'a':'m':'p':';' :rem)     -> liftM (mkData mk acc EntityAmp1) (recogEntities3 mk [] rem)
+  ('&':'#':'3':'8':';' :rem)     -> liftM (mkData mk acc EntityAmp2) (recogEntities3 mk [] rem)
+  ('&':rem)                      -> do
+    tell $ ["warning: not supported entities found: " ++ findEntity rem [] ++ " GetPut is not guaranteed."]
+    recogEntities3 mk ('&':acc) rem
+  (x:rem)                        -> recogEntities3 mk (x:acc) rem
+  []                             -> return $ (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : []
+  where
+    mkData mk acc entity val = (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : [GTree (CTagText mk (TL entity)) []] : val
+    findEntity (';': xs) acc = ('&' : reverse acc) ++ ";"
+    findEntity (x:xs) acc = findEntity xs (x:acc)
 
 
 refineDoc :: HTMLDoc -> HTMLDoc
-refineDoc (HTMLDoc s0 doctype s1 html s2) = HTMLDoc s0 doctype s1 (markTextNodeType . recogEntities $ html) s2
+refineDoc (HTMLDoc s0 doctype s1 html s2) =
+  let (res, warns) = runWriter (recogEntities html)
+  in  trace (unlines warns) $ HTMLDoc s0 doctype s1 (markTextNodeType res) s2
 
 -- to distinguish Inline TextNode and Other TextNode.
 -- to merge adjacent spaces together.

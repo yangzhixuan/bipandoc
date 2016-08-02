@@ -14,6 +14,9 @@ import Parser.Markdown
 
 import Text.Megaparsec
 
+import Control.Monad.Writer
+
+import Debug.Trace
 
 testGetPut1 :: IO ()
 testGetPut1 = do
@@ -111,10 +114,4 @@ test1pModifiedTrace = do
       ast = maybe (error "parse cst to ast error") id (get htmlBX cst)
       s'  = putTrace htmlBX newS ast
   putStrLn (ppShow s')
-getHTMLGTree :: IO (GTree CTag)
-getHTMLGTree = do
-  i <- readFile "tests/1.html"
-  let oo  = parseHTML i
-      HTMLDoc _ _ _ (GTree (CTag _ _ _ _) html) _ = oo
-      html' = filter (\x -> case x of GTree (CTag _ (Right "body") _ _) _ -> True; _ -> False) html
-  return (head html')
+
