@@ -46,7 +46,7 @@ blockBX :: BiGUL Block AbsBlock
 blockBX =
     Case [ -- Case: AbsPara
            $(normalSV [p| Para _ _ |] [p| AbsPara _ |] [p| Para _ _ |])
-           ==> $(update [p| Para _ x |] [p| AbsPara x |] [d| x = mapLens inlineBX createInline |])
+           ==> $(update [p| Para _ x |] [p| AbsPara x |] [d| x = inlineListBX |])
 
          , $(adaptiveSV [p| _ |] [p| AbsPara _ |])
            ==> \_ v -> Para DefaultIndent []
@@ -54,11 +54,11 @@ blockBX =
            -- Case: AbsHeading
          , $(normalSV [p| ATXHeading _ _ _ _ _ |] [p| AbsHeading _ _ |] [p| ATXHeading _ _ _ _ _ |])
            ==> $(update [p| ATXHeading _ atx _ heading _ |] [p| AbsHeading atx heading |]
-                        [d| atx = atxBX; heading = mapLens inlineBX createInline |])
+                        [d| atx = atxBX; heading = inlineListBX |])
 
          , $(normal [| \(SetextHeading _ _ _ _ _ _) (AbsHeading level _) -> level == 1 || level == 2|] [| \(SetextHeading _ _ _ _ _ _) -> True |])
            ==> $(update [p| SetextHeading _ heading _ _ setextLine _ |] [p| AbsHeading setextLine heading |]
-                        [d| heading = mapLens inlineBX createInline; setextLine = setextLineBX |])
+                        [d| heading = inlineListBX; setextLine = setextLineBX |])
 
          , $(adaptiveSV [p| _ |] [p| AbsHeading _ _ |])
            ==> \_ v -> ATXHeading DefaultIndent "" " " [] "\n"
@@ -122,7 +122,6 @@ blockBX =
                    where removeNewline "" = ""
                          removeNewline s = init s
 
-               createInline = const $ Str ""
                generateFence str = tryFence "~~~"
                  where tryFence s = if Text.isInfixOf (Text.pack s) (Text.pack str)
                                        then tryFence ('~' : s)
@@ -142,6 +141,36 @@ orderedListItemBX :: BiGUL ListItem AbsListItem
 orderedListItemBX = $(update [p| OrderedListItem _ _ _ _ _ x |] [p| AbsOrderedListItem x |]
                                [d| x = blockListBX |])
 
+
+
+inlineListBX :: BiGUL [Inline] [AbsInline]
+inlineListBX = (mapLens inlineBX createInline) `Compose` concatAbsStrLens
+
+createInline = const $ Str ""
+
+-- A convention in AST is that no consecutive non-space AbsStr should appear.
+-- So we concatenate/split AbsStr in a lens.
+concatAbsStrLens = emb concateAbsStr splitAbsStr
+
+concateAbsStr :: [AbsInline] -> [AbsInline]
+concateAbsStr (AbsStr x : AbsStr y : strs)
+  | not (isSpace (head x)) && not (isSpace (head y)) = concateAbsStr (AbsStr (x ++ y) : strs)
+  | otherwise = AbsStr x : concateAbsStr (AbsStr y : strs)
+concateAbsStr (x : y : strs) = x : concateAbsStr (y:strs)
+concateAbsStr strs = strs
+
+splitAbsStr :: [AbsInline] -> [AbsInline] -> [AbsInline]
+splitAbsStr _ viewStr = concatMap refine viewStr
+  where refine :: AbsInline -> [AbsInline]
+        refine (AbsStr str) =
+          let (a,b) = break pred str
+          in  if null b
+                then if null a then [] else [AbsStr a]
+                else if pred (head b)
+                      then if null a then AbsStr [(head b)] : refine (AbsStr (tail b)) else AbsStr a : AbsStr [(head b)] : refine (AbsStr (tail b))
+                      else error "should not reach here. splitAbsStr."
+        refine a = [a]
+        pred e = elem e Parser.Markdown.punctuation
 
 inlineBX :: BiGUL Inline AbsInline
 inlineBX =
@@ -168,7 +197,7 @@ inlineBX =
            -- Case: Emph
          , $(normalSV [p| Emph _ |] [p| AbsEmph _ |] [p| Emph _ |])
            ==> $(update [p| Emph x |] [p| AbsEmph x |]
-                        [d| x = mapLens inlineBX createInline |])
+                        [d| x = inlineListBX |])
 
          , $(adaptiveSV [p| _ |] [p| AbsEmph _ |])
            ==> \_ v -> Emph []
@@ -176,7 +205,7 @@ inlineBX =
            -- Case: Strong
          , $(normalSV [p| Strong _ |] [p| AbsStrong _ |] [p| Strong _ |])
            ==> $(update [p| Strong x |] [p| AbsStrong x |]
-                        [d| x = mapLens inlineBX createInline |])
+                        [d| x = inlineListBX |])
 
          , $(adaptiveSV [p| _ |] [p| AbsStrong _ |])
            ==> \_ v -> Strong []
@@ -207,7 +236,7 @@ inlineBX =
            -- Case: AbsLink
          , $(normalSV [p| Link _ _ |] [p| AbsLink _ _ |] [p| Link _ _ |])
            ==> $(update [p| Link t dest |] [p| AbsLink t dest |]
-                        [d| t = mapLens inlineBX createInline; dest = Replace |])
+                        [d| t = inlineListBX; dest = Replace |])
 
          , $(adaptiveSV [p| _ |] [p| AbsLink _ _ |])
            ==> \s v -> (Link [] "")
@@ -220,4 +249,3 @@ inlineBX =
          , $(adaptiveSV [p| _ |] [p| AbsImage _ _ |])
            ==> \s v -> (Image "" "")
          ]
-    where createInline = const $ Str ""

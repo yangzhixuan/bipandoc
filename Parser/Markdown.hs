@@ -488,19 +488,29 @@ image = try $ do
     return $ Image (concat desc) (concat dest)
 
 
--- Any char not in a part of other inlines 
-strInline :: Parsec String ParserStatus Inline
-strInline = do
-    st <- getState
-    chs <- many1 $ (notFollowedByAny specialInlines) >>
-                    satisfy (\c -> c /= '\n' && (not (inEmph st) || c /= '*')
-                                             && (not (inStrong st) || c /= '*')
-                                             && (not (inLink st) || c /= ']'))
+wordInline :: Parsec String ParserStatus Inline
+wordInline = do
+    chs <- many1 $ (notFollowedByAny specialInlines) 
+                     >> (notFollowedBy punctuationInline)
+                     >> satisfy (\c -> c /= '\n' && c `notElem` punctuation)
     return $ Str chs
 
+punctuationInline :: Parsec String ParserStatus Inline
+punctuationInline = try $ do
+    lookAhead (oneOf punctuation)
+    notFollowedByAny specialInlines
+    st <- getState
+    c <- satisfy (\c -> c `elem` punctuation && (not (inEmph st) || c /= '*')
+                                             && (not (inStrong st) || c /= '*')
+                                             && (not (inLink st) || c /= ']'))
+    return $ Str [c]
+
+-- Any char not in a part of other inlines 
+strInline :: Parsec String ParserStatus Inline
+strInline = punctuationInline <|> wordInline
 
 inline :: Parsec String ParserStatus Inline
-inline = choice ( strInline : specialInlines)
+inline = choice ( specialInlines ++ [strInline] )
 
 ----------------------------------
 --------- Helper Parsers ---------
