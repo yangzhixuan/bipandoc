@@ -392,6 +392,12 @@ isVoidElement = flip elem ["area", "base", "br", "col", "command", "embed", "hr"
 prtDocument :: HTMLDoc -> String
 prtDocument (HTMLDoc pre doctype mid html tra) = pre ++ doctype ++ mid ++ prtHTML html ++ tra
 
+prtDocumentBody :: HTMLDoc -> String
+prtDocumentBody (HTMLDoc pre doctype mid (GTree _ ele) tra) = concatMap prtHTML (findBody ele)
+    where findBody [] = error "no <body> in html document"
+          findBody ((GTree (CTag Block (Right "body") [] NormalClose) bodyContent) : res) = bodyContent
+          findBody (x:xs) = findBody xs
+
 prtHTML :: HTML -> String
 prtHTML (GTree (CTag _ tn sOrAs SelfClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ "/>"
 prtHTML (GTree (CTag _ tn sOrAs NoClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ ">"

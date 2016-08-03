@@ -116,16 +116,6 @@ test1pModifiedTrace = do
   putStrLn (ppShow s')
 
 
-emptyHTML :: HTMLDoc
-emptyHTML = HTMLDoc ""  doctype " " html "\n"
-      where doctype = "<!DOCTYPE HTML>"
-            html    = (GTree (CTag Block (Right "html") [] NormalClose)
-                             [GTree (CTagText OtherText (TR "\n")) []
-                             ,GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (TR "\n")) []]
-                             ,GTree (CTagText OtherText (TR "\n  ")) []
-                             ,GTree (CTag Block (Right "body") [] NormalClose) []])
-
-
 getHTMLGTree :: IO (GTree CTag)
 getHTMLGTree = do
   i <- readFile "tests/1.html"

@@ -166,7 +166,7 @@ filterLens f =
 
            -- Case 2: [] v:vs, not f v => fail
            $(normal [| \[] (v:vs) -> not (f v) |] [| const False |])
-           (Fail "invalid view"),
+           (Fail "filterLens: invalid view"),
 
            -- Case 3: [] v:vs, f v => add v to source
            $(adaptive [| \[] (v:vs) -> f v |])
@@ -182,7 +182,7 @@ filterLens f =
 
            -- Case 5': s:ss v:vs, f s && not (f v) => fail
            $(normal [| \(s:ss) (v:vs) -> (f s) && not (f v) |] [| const False |] )
-           (Fail "invalid view")
+           (Fail "filterLens: invalid view")
         ]
 
 

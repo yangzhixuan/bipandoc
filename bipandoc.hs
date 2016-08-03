@@ -53,6 +53,8 @@ put opt src view = case dstFormat opt of
 
     "html" -> put' (HTMLBX.htmlBX, HTMLParser.parseHTML, HTMLParser.prtDocument)
 
+    "html-body" -> put' (HTMLBX.htmlBX, HTMLParser.parseHTML, HTMLParser.prtDocumentBody)
+
     "markdown" -> put' (MarkdownBX.markdownBX, MarkdownParser.parseMarkdown, MarkdownParser.printMarkdown)
 
     f -> error ("Invalid target format: " ++ f)
@@ -76,6 +78,7 @@ defaultDocument :: String -> String
 defaultDocument format = 
     case format of
         "html" -> HTMLParser.defaultHTML
+        "html-body" -> HTMLParser.defaultHTML
         "markdown" -> MarkdownParser.defaultMarkdown
         _ -> ""
 
@@ -92,7 +95,7 @@ main = do
     src <- hGetContents srcH
     let viewM = get opts src
 
-    MarkdownParser.putPretty viewM
+    -- MarkdownParser.putPretty viewM
 
     if isNothing viewM
        then do
