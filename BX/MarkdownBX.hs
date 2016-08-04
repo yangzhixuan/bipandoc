@@ -52,8 +52,8 @@ blockBX =
            ==> \_ v -> Para DefaultIndent []
 
            -- Case: AbsHeading
-         , $(normalSV [p| ATXHeading _ _ _ _ _ |] [p| AbsHeading _ _ |] [p| ATXHeading _ _ _ _ _ |])
-           ==> $(update [p| ATXHeading _ atx _ heading _ |] [p| AbsHeading atx heading |]
+         , $(normalSV [p| ATXHeading _ _ _ _ _ _ |] [p| AbsHeading _ _ |] [p| ATXHeading _ _ _ _ _ _ |])
+           ==> $(update [p| ATXHeading _ atx _ heading _ _ |] [p| AbsHeading atx heading |]
                         [d| atx = atxBX; heading = inlineListBX |])
 
          , $(normal [| \(SetextHeading _ _ _ _ _ _) (AbsHeading level _) -> level == 1 || level == 2|] [| \(SetextHeading _ _ _ _ _ _) -> True |])
@@ -61,7 +61,7 @@ blockBX =
                         [d| heading = inlineListBX; setextLine = setextLineBX |])
 
          , $(adaptiveSV [p| _ |] [p| AbsHeading _ _ |])
-           ==> \_ v -> ATXHeading DefaultIndent "" " " [] "\n"
+           ==> \_ v -> ATXHeading DefaultIndent "" " " [] "" "\n"
 
            -- Case: AbsUnorderedList
          , $(normalSV [p| UnorderedList _ |] [p| AbsUnorderedList _ |] [p| UnorderedList _ |])
@@ -129,16 +129,16 @@ blockBX =
 
 
 createListItem :: AbsListItem -> ListItem
-createListItem (AbsUnorderedListItem items) = UnorderedListItem DefaultIndent "" '*' " " (if null items then [BlankLine (Indent "") "\n"] else [])
-createListItem (AbsOrderedListItem items) = OrderedListItem DefaultIndent "" "1" '.' " " (if null items then [BlankLine (Indent "") "\n"] else [])
+createListItem (AbsUnorderedListItem items) = UnorderedListItem DefaultIndent '*' " " (if null items then [BlankLine (Indent "") "\n"] else [])
+createListItem (AbsOrderedListItem items) = OrderedListItem DefaultIndent "1" '.' " " (if null items then [BlankLine (Indent "") "\n"] else [])
 
 
 unorderedListItemBX :: BiGUL ListItem AbsListItem
-unorderedListItemBX = $(update [p| UnorderedListItem _ _ _ _ x |] [p| AbsUnorderedListItem x |]
+unorderedListItemBX = $(update [p| UnorderedListItem _ _ _ x |] [p| AbsUnorderedListItem x |]
                                [d| x = blockListBX |])
 
 orderedListItemBX :: BiGUL ListItem AbsListItem
-orderedListItemBX = $(update [p| OrderedListItem _ _ _ _ _ x |] [p| AbsOrderedListItem x |]
+orderedListItemBX = $(update [p| OrderedListItem _ _ _ _ x |] [p| AbsOrderedListItem x |]
                                [d| x = blockListBX |])
 
 

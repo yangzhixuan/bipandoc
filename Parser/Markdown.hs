@@ -25,7 +25,7 @@ data Indent = DefaultIndent | Indent String
     deriving (Show, Eq)
 
 data Block = Para Indent [Inline] -- indent, inlines
-           | ATXHeading Indent String String [Inline] String -- indent, atxs, spaces, heading, newline
+           | ATXHeading Indent String String [Inline] String String -- indent, atxs, spaces, heading, newline
            | SetextHeading Indent [Inline] String Indent String String -- indent, heading, newline, ind, underline, spaces
            | UnorderedList [ListItem]
            | OrderedList [ListItem]
@@ -35,10 +35,10 @@ data Block = Para Indent [Inline] -- indent, inlines
            | FencedCode Indent String String [CodeLine] Indent String String -- indent, fence, spaces, code lines, indent, fence, spaces
     deriving (Show, Eq)
 
-data ListItem = UnorderedListItem Indent String Char String [Block]
-                                -- indent, spaces, bullet, spaces, items
-              | OrderedListItem Indent String String Char String [Block]
-                                -- indent, spaces, number, dot, spaces, items
+data ListItem = UnorderedListItem Indent Char String [Block]
+                                -- indent, bullet, spaces, items
+              | OrderedListItem Indent String Char String [Block]
+                                -- indent, number, dot, spaces, items
     deriving (Show, Eq) 
 
 data CodeLine = CodeLine Indent String -- indent, code
@@ -86,14 +86,14 @@ printBlock :: String -> Bool -> Block -> String
 printBlock defaultIndent skipFirstIndent block = case block of
     (BlankLine ind s) -> pInd ind ++ s
     (Para ind inls) -> pInd ind ++ (concatMap (printInline defaultIndent) inls) ++ "\n"
-    (ATXHeading ind atxs sps heading sps2) -> pInd ind ++ atxs ++ sps ++ (concatMap (printInline defaultIndent) heading) ++ sps2
+    (ATXHeading ind atxs sps heading atx2 sps2) -> pInd ind ++ atxs ++ sps ++ (concatMap (printInline defaultIndent) heading) ++ atx2 ++ sps2
     (SetextHeading ind heading sps2 ind2 unls sps) -> pInd ind ++ (concatMap (printInline defaultIndent) heading) ++ sps2 ++ pInd2 ind2 ++ unls ++ sps
     (UnorderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
     (OrderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
     (BlockQuote ind str (b1:bs)) -> pInd ind ++ str ++ printBlock (defaultIndent ++ ">") True b1 ++ (concatMap (printBlock (defaultIndent ++ ">") False) bs)
     (IndentedCode codes) -> (if length codes > 0 && (\(CodeLine ind _) -> ind == DefaultIndent) (head codes) then "\n" else "") ++ concatMap (printCodeLine (defaultIndent ++ "    ")) codes
     (FencedCode i1 f1 s1 codes i2 f2 s2) -> (pInd i1) ++ f1 ++ s1 ++ concatMap (printCodeLine defaultIndent) codes ++ pInd2 i2 ++ f2 ++ s2
-    where pInd ind = if skipFirstIndent then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
+    where pInd ind = if skipFirstIndent && (ind == DefaultIndent) then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
           pInd2 ind = printIndent defaultIndent ind
 
 printInline :: String -> Inline -> String
@@ -110,15 +110,13 @@ printInline defaultIndent inline = case inline of
     (Image alt dest) -> "![" ++ alt ++ "]" ++ "(" ++ dest ++ ")"
     where pInd = printIndent defaultIndent
 
--- FIXME: split blockquote indentation
-
 printListItem :: String -> Bool -> ListItem -> String
-printListItem defaultIndent skipFirstIndent (UnorderedListItem ind sps bullet sps2 (it1:items)) = pInd ind ++ sps ++ [bullet] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
-    where pInd ind = if skipFirstIndent then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
+printListItem defaultIndent skipFirstIndent (UnorderedListItem ind bullet sps2 (it1:items)) = pInd ind ++ [bullet] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
+    where pInd ind = if skipFirstIndent && (ind == DefaultIndent) then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
           newIndent = defaultIndent ++ " " ++ sps2
 
-printListItem defaultIndent skipFirstIndent (OrderedListItem ind sps number dot sps2 (it1:items)) = pInd ind ++ sps ++ number ++ [dot] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
-    where pInd ind = if skipFirstIndent then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
+printListItem defaultIndent skipFirstIndent (OrderedListItem ind number dot sps2 (it1:items)) = pInd ind ++ number ++ [dot] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
+    where pInd ind = if skipFirstIndent && (ind == DefaultIndent) then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
           newIndent = defaultIndent ++ (replicate (length number + 1) ' ') ++ sps2
 
 printCodeLine :: String -> CodeLine -> String
@@ -189,6 +187,12 @@ indentation = do
        else do ind <- indentation' $ indents st
                return $ ind
 
+indentationWithSpaces :: Parsec String ParserStatus String
+indentationWithSpaces = do
+    ind <- indentation
+    spa <- manyRange 0 3 ' '
+    return $ ind ++ spa
+
 -- | Parses a blankline as a block
 blankLine :: Parsec String ParserStatus Block
 blankLine = try $ do 
@@ -208,14 +212,15 @@ blankLine = try $ do
 -- | Parses a atxHeading
 atxHeading :: Parsec String ParserStatus Block
 atxHeading = try $ do
-    ind <- indentation
+    ind <- indentationWithSpaces
 
     atx <- manyRange 1 6 '#'
     spaces <- spaceChars
-    heading <- many1 ((notFollowedBy (softbreak <|> hardbreak)) >> inline)
+    heading <- many1 ((notFollowedBy (many (char '#') >> (softbreak <|> hardbreak))) >> inline)
+    closing_atx <- many (char '#')
     sps2 <- spaceChars
     newline
-    return $ ATXHeading (Indent ind) atx spaces heading (sps2 ++ "\n")
+    return $ ATXHeading (Indent ind) atx spaces heading closing_atx (sps2 ++ "\n")
 
 -- | Parses a setextHeading
 
@@ -223,8 +228,8 @@ setextHChars = "=-"
 
 setextHeading :: Parsec String ParserStatus Block
 setextHeading = try $ do
-    lookAhead $ indentation >> anyLine >> indentation >> many1 (oneOf setextHChars) >> spaceChars >> newline
-    ind <- indentation
+    lookAhead $ indentationWithSpaces >> anyLine >> indentation >> many1 (oneOf setextHChars) >> spaceChars >> newline
+    ind <- indentationWithSpaces
     heading <- many1 ((notFollowedBy (softbreak <|> hardbreak)) >> inline)
     sps2 <- spaceChars
     newline
@@ -238,8 +243,7 @@ setextHeading = try $ do
 
 blockQuote :: Parsec String ParserStatus Block
 blockQuote = try $ do
-    ind <- indentation
-    sps <- manyRange 0 3 ' '
+    ind <- indentationWithSpaces
     char '>'
     st <- getState
     let newIndent = addIndent st
@@ -247,7 +251,7 @@ blockQuote = try $ do
     putState newSt1
     blocks <- many1 block
     putState st
-    return $ BlockQuote (Indent ind) (sps ++ ">") blocks
+    return $ BlockQuote (Indent ind) (">") blocks
     where addIndent st = (indents st) ++ [BlockquoteIndentation]
 
 -- | Parse an indented code block
@@ -274,7 +278,7 @@ fenceChars = "`~"
 
 fencedCode :: Parsec String ParserStatus Block
 fencedCode = try $ do
-    ind1 <- indentation
+    ind1 <- indentationWithSpaces
     fenceChar <- oneOf fenceChars
     char fenceChar
     char fenceChar
@@ -282,8 +286,8 @@ fencedCode = try $ do
     sp1 <- many (satisfy (\c -> c /= '\n'))
     newline
     let fence = fenceChar : fenceChar : fenceChar : fenceCharRest
-    code <- many (notFollowedBy (indentation >> string fence >> spaceChars >> newline) >> fencedCodeLine)
-    ind2 <- indentation
+    code <- many (notFollowedBy (indentationWithSpaces >> string fence >> spaceChars >> newline) >> fencedCodeLine)
+    ind2 <- indentationWithSpaces
     fence2 <- string fence
     sp2 <- spaceChars
     newline
@@ -302,7 +306,7 @@ paragraph = do
     -- st <- getState
     -- trace ("p: " ++ (show rest) ++ " with indent: " ++ (show st)) (return ())
 
-    ind <- indentation
+    ind <- indentationWithSpaces
     inlines <- many1 inline
     newline
     return $ Para (Indent ind) inlines
@@ -315,8 +319,7 @@ unorderedListChar = "-*+"
 unorderedListItem :: Parsec String ParserStatus ListItem
 unorderedListItem  = try $ do
     st0 <- getState
-    ind <- indentation
-    sp <- manyRange 0 3 ' '
+    ind <- indentationWithSpaces
     ch <- oneOf unorderedListChar
     -- Generally, several spaces is needed between the bullet and the first char of the ListItem.
     -- However, when the first item is a BlankLine, the spaces can be omitted.
@@ -336,7 +339,7 @@ unorderedListItem  = try $ do
     blocks <- many1 block
     putState st
 
-    return $ UnorderedListItem (Indent ind) sp ch sp2 blocks
+    return $ UnorderedListItem (Indent ind) ch sp2 blocks
     where addIndent st k = (indents st) ++ [SpaceIndentation k]
 
 unorderedList :: Parsec String ParserStatus Block
@@ -347,7 +350,6 @@ unorderedList = try $ do
 orderedListItem :: Parsec String ParserStatus ListItem
 orderedListItem = try $ do
     ind <- indentation
-    sp <- manyRange 0 3 ' '
     num <- many1 (oneOf "1234567890")
     ch <- char '.'
     sp2 <- (lookAhead newline >> return "") <|> many1 (char ' ')
@@ -366,7 +368,7 @@ orderedListItem = try $ do
     blocks <- many1 block
     putState st
 
-    return $ OrderedListItem (Indent ind) sp num ch sp2 blocks
+    return $ OrderedListItem (Indent ind) num ch sp2 blocks
     where addIndent st k = (indents st) ++ [SpaceIndentation k]
 
 orderedList :: Parsec String ParserStatus Block
@@ -456,7 +458,6 @@ escapedChar = try $ do
 inlineCode :: Parsec String ParserStatus Inline
 inlineCode = try $ do
     delim <- many1 (char '`')
-    let len = length delim
     code <- many1 (notBlankline >> notFollowedBy (string delim) >> anyChar)
     string delim
     return $ InlineCode delim code

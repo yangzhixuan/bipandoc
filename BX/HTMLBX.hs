@@ -40,9 +40,23 @@ refineBX1 =
         ]
 
 -- kind of filter-GTree, but do not test the given node. The filter actually statrs from its children list.
-filterGTree :: (Eq a, Show a) => (GTree a -> Bool) -> BiGUL (GTree a) (GTree a)
-filterGTree p = $(update [p| GTree node subs |] [p| GTree node subs |]
+-- filterGTree :: (Eq a, Show a) => (GTree a -> Bool) -> BiGUL (GTree a) (GTree a)
+-- filterGTree p = $(update [p| GTree node subs |] [p| GTree node subs |]
+--                          [d| node = Replace; subs = filterLens p `Compose` mapLens (filterGTree p) id |])
+
+filterGTree p = 
+    Case [ $(normalSV [p| _ |] [p| (GTree (CTagText InlineText _) []) |]
+                      [p| (GTree (CTagText InlineText _) []) |] )
+           ==> Replace
+
+         , $(normalSV [p| _ |] [p| (GTree (CTagCode _) []) |]
+                      [p| (GTree (CTagCode _) []) |] )
+           ==> Replace
+
+         , $(normal [| \s v -> True |] [| const True |])
+           ==> $(update [p| GTree node subs |] [p| GTree node subs |]
                          [d| node = Replace; subs = filterLens p `Compose` mapLens (filterGTree p) id |])
+         ]
 
 
 -- test this idea: skip dividing blocks such as "div", "span" ...
@@ -434,3 +448,4 @@ emptyHTML = HTMLDoc ""  doctype " " html "\n"
                              ,GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (TR "\n")) []]
                              ,GTree (CTagText OtherText (TR "\n  ")) []
                              ,GTree (CTag Block (Right "body") [] NormalClose) []])
+

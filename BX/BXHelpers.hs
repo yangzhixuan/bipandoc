@@ -257,3 +257,13 @@ groupLens = (align (const True) (\x y -> x == y) (Replace) id (const Nothing)) `
 
 sortLens :: BiGUL [(Int,Int)] [(Int ,Int)]
 sortLens = Skip (\x -> sortBy (\x y -> compare (fst x) (fst y)) x)
+
+filterLens' p = emb (filter p) (filterPut p)
+filterPut p s v = 
+    if null (filter (not . p) v) 
+       then filterPut' s v
+       else (error "filterLens: invalid view")
+    where filterPut' s [] = filter (not . p) s
+          filterPut' [] v = v
+          filterPut' (s:ss) (v:vs) = if not (p s) then s : (filterPut' ss (v:vs)) else (v : filterPut' ss vs)
+
