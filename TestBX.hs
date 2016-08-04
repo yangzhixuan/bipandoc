@@ -15,7 +15,9 @@ import Generics.BiGUL.TH
 
 import Abstract
 import Parser.Markdown
+import Parser.HTMLParser
 import BX.MarkdownBX
+import BX.HTMLBX
 
 putStrInGreen :: String -> IO ()
 putStrInGreen s = do
@@ -35,8 +37,23 @@ testBX filename = do
     putPretty view
     putStrLn ""
     --
-    let src' = (view >>= \v -> put markdownBX md v)
-    putStrInGreen "Put back source:\n"
+    let htmlCST = view >>= put htmlBX emptyHTMLCST
+    putStrInGreen "Put to empty HTML, got: \n"
+    putPretty htmlCST
+    putStrLn ""
+
+    let htmlCST' = fmap (parseHTML . prtDocument) htmlCST
+    putStrInGreen "Print and re-parse htmlCST: \n"
+    putPretty htmlCST'
+    putStrLn ""
+    --
+    let view' = htmlCST' >>= get htmlBX
+    putStrInGreen "Got view from HTML: \n"
+    putPretty view'
+    putStrLn ""
+    --
+    let src' = (view' >>= \v -> put markdownBX md v)
+    putStrInGreen "Put back to source md:\n"
     putPretty src'
     putStrLn ""
     putStrInGreen "Equal to the original source? "

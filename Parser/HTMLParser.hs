@@ -1,8 +1,8 @@
-{-# Language RecordWildCards #-}
+{-# Language RecordWildCards, TemplateHaskell, TypeFamilies #-}
 
 -- todo: keep spaces and linebreaks in <pre>. treat them as what they are
 
-module Parser.HTMLParser (parseHTML, prtDocument, isSupportedNode, emptyHTMLCST, emptyHTMLStr) where
+module Parser.HTMLParser (parseHTML, prtDocument, prtDocumentBody, isSupportedNode, emptyHTMLCST, emptyHTMLStr) where
 
 import Parser.HTMLParserDataType
 import Text.Megaparsec
@@ -443,7 +443,8 @@ recogEntities3 mk acc str = case str of
 refineDoc :: HTMLDoc -> HTMLDoc
 refineDoc (HTMLDoc s0 doctype s1 html s2) =
   let (res, warns) = runWriter (recogEntities html)
-  in  trace (unlines warns) $ HTMLDoc s0 doctype s1 (markTextNodeType res) s2
+      trace' s v = if null s then v else trace s v
+  in  trace' (unlines warns) $ HTMLDoc s0 doctype s1 (markTextNodeType res) s2
 
 -- to distinguish Inline TextNode and Other TextNode.
 -- to merge adjacent spaces together.
