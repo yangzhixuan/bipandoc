@@ -18,7 +18,7 @@ data AbsBlock = AbsPara [AbsInline]
 
 data AbsListItem = AbsUnorderedListItem [AbsBlock]
                  | AbsOrderedListItem [AbsBlock]
-    deriving (Show, Eq) 
+    deriving (Show, Eq)
 
 data AbsInline = AbsStr String
                | AbsSoftbreak

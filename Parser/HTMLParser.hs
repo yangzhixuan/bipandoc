@@ -319,6 +319,12 @@ isVoidElement = (`elem` ["area", "base", "br", "col", "command", "embed", "hr", 
 prtDocument :: HTMLDoc -> String
 prtDocument (HTMLDoc pre doctype mid html tra) = pre ++ doctype ++ mid ++ prtHTML html ++ tra
 
+prtDocumentBody :: HTMLDoc -> String
+prtDocumentBody (HTMLDoc pre doctype mid (GTree _ ele) tra) = concatMap prtHTML (findBody ele)
+    where findBody [] = error "no <body> in html document"
+          findBody ((GTree (CTag Block (Right "body") [] NormalClose) bodyContent) : res) = bodyContent
+          findBody (x:xs) = findBody xs
+
 prtHTML :: HTML -> String
 prtHTML (GTree (CTag _ tn sOrAs SelfClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ "/>"
 prtHTML (GTree (CTag _ tn sOrAs NoClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ ">"
@@ -424,7 +430,7 @@ recogEntities3 mk acc str = case str of
   ('&':'a':'m':'p':';' :rem)     -> liftM (mkData mk acc EntityAmp1) (recogEntities3 mk [] rem)
   ('&':'#':'3':'8':';' :rem)     -> liftM (mkData mk acc EntityAmp2) (recogEntities3 mk [] rem)
   ('&':rem)                      -> do
-    tell $ ["warning: not supported entities found: " ++ findEntity rem [] ++ " GetPut is not guaranteed."]
+    tell $ ["warning: not supported entities found: " ++ findEntity rem [] ++ " well-behavedness is not guaranteed."]
     recogEntities3 mk ('&':acc) rem
   (x:rem)                        -> recogEntities3 mk (x:acc) rem
   []                             -> return $ (if null acc then [] else [GTree (CTagText mk (TR (reverse acc))) []]) : []

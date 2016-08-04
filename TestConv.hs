@@ -114,4 +114,3 @@ test1pModifiedTrace = do
       ast = maybe (error "parse cst to ast error") id (get htmlBX cst)
       s'  = putTrace htmlBX newS ast
   putStrLn (ppShow s')
-
