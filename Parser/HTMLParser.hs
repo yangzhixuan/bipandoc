@@ -89,39 +89,55 @@ pDocType = do
   return $ pre ++ o ++ d ++ mid ++ whatever ++ ">"
   <?> "pDocType"
 
-
 pHTMLNode :: PU HTML
 pHTMLNode = do
-  CTag _ tn sOrA _ <- pTagOpen
+  char '<'
+  string "html"
+  sOrA <- many spacesOrAttr <?> "parse attribute error"
+  char '>'
   inner <- many pAnyNode <?> "\tparse <head> or <body> fail. maybe they are not closed properly?"
   string "</html>" <?> "</html>, is <html> closed properly?"
-  return $ GTreeNode (CTag Block tn sOrA NormalClose) inner
+  return $ GTreeNode (CTag Block (Right "html") sOrA NormalClose) inner
   <?> "error in parsing html tag"
 
-pTagElement :: PU HTML
-pTagElement = do
-  posO <-getPosition
-  CTag _ tn sOrA maybeSelfClose <- pTagSelfCloseOrOpen
-  GTreeNode (CTag _ bb cc dd) ee <-
-    case maybeSelfClose of
-      SelfClose -> return $ GTreeNode (CTag undefined tn sOrA SelfClose) [] -- set to GTreeNode for easier handling. changed to GTreeLeaf later in this function
-      NotDecidedCloseMark   ->
-        if isVoidElement (prtCTagName tn)
-          then return $ GTreeNode (CTag undefined tn sOrA NoClose) []  -- for void element.
-          else do
-            inner <- many pAnyNode
-            posC  <- getPosition
-            tc    <- pTagClose
-            if (prtCTagName tn) == tc
-              then return $ GTreeNode (CTag undefined tn sOrA NormalClose) inner
-              else error $ "opening and closing tag mismatch. Opening: " ++ wrapTagO (prtCTagName tn) ++ " at " ++ showErrPos posO
-                            ++ "\tClosing: " ++ wrapTagC tc ++ " at " ++ showErrPos posC
-  let aa = if isInlineTag bb then Inline else Block
-  return $ if isVoidElement (prtCTagName bb) then GTreeLeaf (CTag aa bb cc dd) else GTreeNode (CTag aa bb cc dd) ee
-  <?> "pTagElement"
-
 pAnyNode :: PU HTML
-pAnyNode = try pScriptTag <|> try pTagCode <|> try pTagElement <|> try pTagComment <|> pTagText <?> "parse tags fail. maybe some tags are not closed properly"
+pAnyNode = pAnyTag <|> pComment <|> pText <?> "parse tags fail. maybe some tags are not closed properly"
+
+pAnyTag :: PU HTML
+pAnyTag = do
+  try (do
+    char '<'
+    notFollowedBy (char '/' <|> char '!'))
+  posO <-getPosition
+  tnStr   <- pTagName
+  sOrA <- many (spacesOrAttr <?> "parse attribute error")
+  cm <- (string ">" >> return NotDecidedCloseMark) <|> (string "/>" >> return SelfClose)
+  let tn = case Map.lookup tnStr supportedName of Nothing  -> Right tnStr; Just tn' -> Left tn'
+      tagMark = if isInlineTag tn then Inline else Block
+  case tnStr of
+    "script" -> do
+      case cm of
+        SelfClose -> return $ GTreeLeaf (CTagScript $ "<" ++ tnStr ++ flatSorAs sOrA  ++ "/>")
+        NotDecidedCloseMark -> do
+          txt <- manyTill anyChar (string "</script>")
+          return $ GTreeLeaf (CTagScript $ wrapTagO (tnStr ++ flatSorAs sOrA) ++ txt ++ "</script>")
+    "code"   -> do
+      code <- someTill anyChar (string "</code>")
+      return $ GTreeNode (CTag Inline (Left CCode) sOrA NormalClose) [GTreeLeaf (CCodeContent code)]
+      -- warning. comments inside the code block is not handled. delay the handle of it to the further transformation after parsing.
+      -- eg: <code> <!-- sdfdsf --> is not handled </code>
+    _       -> if isVoidElement tnStr
+      then return $ if cm == NotDecidedCloseMark then GTreeLeaf (CTag tagMark tn sOrA NoClose)
+                                                 else GTreeLeaf (CTag tagMark tn sOrA SelfClose)
+      else do
+        inner <- many pAnyNode
+        posC  <- getPosition
+        tcStr    <- pTagClose
+        if tnStr == tcStr
+          then return $ GTreeNode (CTag tagMark tn sOrA NormalClose) inner
+          else error $ "opening and closing tag mismatch. Opening: " ++ wrapTagO (prtCTagName tn) ++ " at " ++ showErrPos posO
+                        ++ "\tClosing: " ++ wrapTagC tcStr ++ " at " ++ showErrPos posC
+
 
 isInlineTag :: CTagName -> Bool
 isInlineTag (Left tag) = isInlineTag' tag
@@ -130,79 +146,28 @@ isInlineTag (Right _)  = False
 isInlineTag' :: SupportedName -> Bool
 isInlineTag' = flip elem [CEmph, CStrong, CStrike, CImg, CLink, CBr]
 
-pTagSelfCloseOrOpen :: PU CTag
-pTagSelfCloseOrOpen = do
-  char '<'
-  tn   <- pTagName
-  sOrA <- many (spacesOrAttr <?> "parse attribute error")
-  ((   string "/>" >>
-       case Map.lookup tn supportedName of
-         Nothing  -> return $ CTag NotDecidedTagMark (Right tn) (mergeSpaces sOrA) SelfClose
-         Just tn' -> return $ CTag NotDecidedTagMark (Left tn') (mergeSpaces sOrA) SelfClose) <|>
-   (   char '>' >>
-       case Map.lookup tn supportedName of
-         Nothing  -> return $ CTag NotDecidedTagMark (Right tn) (mergeSpaces sOrA) NotDecidedCloseMark
-         Just tn' -> return $ CTag NotDecidedTagMark (Left tn') (mergeSpaces sOrA) NotDecidedCloseMark))
-  <?> "ptag selfclose or open"
-
-
--- pTagSelfClose :: PU CTag
--- pTagSelfClose = do
---   char '<'
---   tn   <- pTagName
---   sOrA <- many spacesOrAttr <?> "parse attribute error"
---   string "/>"
---   case Map.lookup tn supportedName of
---     Nothing  -> return $ CTag NotDecidedTagMark (Right tn) (mergeSpaces sOrA) SelfClose
---     Just tn' -> return $ CTag NotDecidedTagMark (Left tn') (mergeSpaces sOrA) SelfClose
---   <?> "pTagSelfClose"
--- 
--- 
--- TagOpen preSpaces TagName [Either Spaces Attribute]
-pTagOpen :: PU CTag
-pTagOpen = do
-  char '<'
-  tn   <- pTagName
-  sOrA <- many spacesOrAttr <?> "parse attribute error"
-  char '>'
-  case Map.lookup tn supportedName of
-    Nothing  -> return $ CTag NotDecidedTagMark (Right tn) (mergeSpaces sOrA) NotDecidedCloseMark
-    Just tn' -> return $ CTag NotDecidedTagMark (Left tn') (mergeSpaces sOrA) NotDecidedCloseMark
-  <?> "pTagOpen"
 
 pTagClose :: PU String
 pTagClose = do {string "</"; tn <- pTagName; char '>'; return $ tn} <?> "pTagClose"
 
-pTagText :: PU HTML
-pTagText = do
+pText :: PU HTML
+pText = do
   c <- lookAhead (anyChar)
   case c of
     '<' -> unexpected (Label ((DLN.:|) '<' []) )
     _   -> do
           text <- someTill anyChar (lookAhead (string "<") )
           return $ GTreeLeaf (CTagText NotDecidedTextMark (TR text))
-  <?> "pTagText"
+  <?> "pText"
 
 
-pTagComment :: PU HTML
-pTagComment = do
+pComment :: PU HTML
+pComment = do
   string "<!--"
   s <- lookAhead (replicateM 3 anyChar)
   case s of
     "-->" -> string "-->" >> (return $ GTreeLeaf (CTagComment ""))
     _     -> someTill anyChar (string "-->") >>= \cmt -> return $ GTreeLeaf (CTagComment cmt)
-
-
--- warning. comments inside the code block is not handled. delay the handle of it to the further transformation after parsing.
--- eg: <code> <!-- sdfdsf --> is not handled </code>
-pTagCode :: PU (GTree CTag)
-pTagCode = do
-  CTag _ (Left tn) sOrA _ <- pTagOpen
-  if tn == CCode
-    then do
-    code <- someTill anyChar (string "</code>")
-    return $ GTreeNode (CTag Inline (Left CCode) sOrA NormalClose) [GTreeLeaf (CCodeContent code)]
-    else unexpected (Label ((DLN.:|) 'c' []) )
 
 
 spacesOrAttr :: PU (Either Spaces Attribute)
@@ -217,7 +182,7 @@ pAttribute :: PU Attribute
 pAttribute = do
   an <- some (lowerChar <|> char '-' <?> "attribute name must be lower characters or hyphen")
   s0 <- spaceChars
-  char '='
+  char '=' <?> "should have a equal symbol (\'=\') between attribute name and value"
   s1 <- spaceChars
   av <- attrInQuote <|> attrInDQuote <?> "Attribute should be put in quotes"
   return $ Attribute an (s0 ++ "=" ++ s1) av
@@ -235,20 +200,6 @@ pAttribute = do
       av <- manyTill anyChar (lookAhead (string "\""))
       char '"'
       return $ "\"" ++ av ++ "\""
-
-
-pScriptTag :: PU HTML
-pScriptTag = do
-  CTag _ tn sOrA maybeSelfClose <- pTagSelfCloseOrOpen
-  if (prtCTagName tn) == "script"
-  then  case maybeSelfClose of
-          SelfClose -> return $ GTreeLeaf (CTagScript $ "<" ++ (prtCTagName tn) ++ flatSorAs sOrA  ++ "/>")
-          NotDecidedCloseMark -> do
-            txt <- manyTill anyChar (string "</script>")
-            return $ GTreeLeaf (CTagScript $ wrapTagO ((prtCTagName tn) ++ flatSorAs sOrA) ++ txt ++ "</script>")
-  else failure (Set.singleton (Tokens (DLN.fromList "not a script tag, try other parsers"))) (Set.empty) (Set.empty)
-
-
 
 spaceChars :: PU String
 spaceChars = many spaceChar <?> "spaceChars"
