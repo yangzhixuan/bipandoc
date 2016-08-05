@@ -4,13 +4,14 @@ module Parser.Markdown where
 
 import Data.Char
 import Data.Maybe
-import Text.Parsec.Prim
+import Text.Parsec.Prim hiding (State)
 import Text.Parsec.Char
 import Text.Parsec.Text
 import Text.Parsec.Combinator
 import Text.Show.Pretty
 import GHC.Generics
 import Generics.BiGUL.TH
+import Control.Monad.State.Lazy
 
 import Debug.Trace
 --------------------------------------------
@@ -71,8 +72,9 @@ defaultMarkdown = ""
 putPretty :: Show a => a -> IO ()
 putPretty = putStr . ppShow 
 
-printMarkdown :: MarkdownDoc -> String
-printMarkdown (MarkdownDoc blks) = concatMap (printBlock "" False) blks
+{-
+printMarkdown' :: MarkdownDoc -> String
+printMarkdown' (MarkdownDoc blks) = concatMap (printBlock "" False) blks
 
 printIndent :: String -> Indent -> String
 printIndent defaultIndent DefaultIndent = defaultIndent
@@ -121,6 +123,122 @@ printListItem defaultIndent skipFirstIndent (OrderedListItem ind number dot sps2
 
 printCodeLine :: String -> CodeLine -> String
 printCodeLine defaultIndent (CodeLine ind code) = printIndent defaultIndent ind ++ code
+-}
+
+printMarkdown :: MarkdownDoc -> String
+printMarkdown md = evalState (markdownPrinter md) (PrinterStatus "" False False)
+
+data PrinterStatus = PrinterStatus{ defaultIndent :: String, _skipIndentOnce :: Bool, notFirstLine :: Bool }
+
+markdownPrinter :: MarkdownDoc -> State PrinterStatus String
+markdownPrinter (MarkdownDoc blks) = do
+    s <- mapM blockPrinter blks
+    return (concat s)
+
+infixr 5 <++>
+(<++>) a b = do
+    sa <- a
+    sb <- b
+    return (sa ++ sb)
+
+concatMapM :: (Traversable t, Monad m) => (a -> m [b]) -> t a -> m [b]
+concatMapM f l = fmap concat (mapM f l)
+
+indentPrinter' :: Indent -> State PrinterStatus String
+indentPrinter' (Indent s) = return s
+indentPrinter' DefaultIndent = fmap defaultIndent get
+
+indentPrinter :: Indent -> State PrinterStatus String
+indentPrinter ind = do
+    st <- get
+    if _skipIndentOnce st
+       then do modify (\st -> st{_skipIndentOnce = False})
+               return (case ind of DefaultIndent -> ""; Indent s -> s)
+       else indentPrinter' ind
+
+blankIndentPrinter :: Indent -> State PrinterStatus String
+blankIndentPrinter ind = do
+    st <- get
+    let newBlankLine = if _skipIndentOnce st || ind /= DefaultIndent || not (notFirstLine st)
+                          then "" else defaultIndent st ++ "\n"
+    -- notFirstLine is used to avoid generating a blankline at the start of a file
+    modify (\st -> st{notFirstLine = True})
+    s <- indentPrinter ind
+    return $ newBlankLine ++ s
+
+blockPrinter :: Block -> State PrinterStatus String
+blockPrinter blk = case blk of
+    (BlankLine ind s) -> indentPrinter ind <++> return s
+
+    (Para ind inls) -> blankIndentPrinter ind <++> concatMapM inlinePrinter inls <++> return "\n"
+
+    (ATXHeading ind atxs sps heading atx2 sps2) -> 
+        blankIndentPrinter ind <++> return atxs <++> return sps <++> 
+        concatMapM inlinePrinter heading <++> return atx2 <++> return sps2
+
+    (SetextHeading ind heading sps2 ind2 unls sps) -> 
+        blankIndentPrinter ind <++> concatMapM inlinePrinter heading <++> 
+        return sps2 <++> indentPrinter ind2 <++> return unls <++> return sps
+
+    (UnorderedList items) -> concatMapM listItemPrinter items
+
+    (OrderedList items) -> concatMapM listItemPrinter items
+
+    (BlockQuote ind str bs) ->
+        blankIndentPrinter ind <++> return str <++>
+        do oldSt <- get
+           put oldSt{ defaultIndent = defaultIndent oldSt ++ ">", _skipIndentOnce = True }
+           s <- concatMapM blockPrinter bs
+           modify (\st -> st{defaultIndent = defaultIndent oldSt})
+           return s
+
+    (IndentedCode codes) -> 
+        do oldSt <- get
+           put oldSt{ defaultIndent = defaultIndent oldSt ++ "    " }
+           s <- concatMapM codeLinePrinter codes
+           modify (\st -> st{ defaultIndent = defaultIndent oldSt })
+           return s
+
+    (FencedCode i1 f1 s1 codes i2 f2 s2) ->
+        blankIndentPrinter i1 <++> return f1 <++> return s1 <++> 
+        concatMapM codeLinePrinter codes <++> indentPrinter i2 <++> 
+        return f2 <++> return s2
+
+
+inlinePrinter :: Inline -> State PrinterStatus String
+inlinePrinter inline = case inline of
+    (Str s) -> return s
+    (Softbreak ind) -> return "\n" <++> indentPrinter ind
+    (Hardbreak s ind) -> return (s ++ "\n") <++> indentPrinter ind
+    (Spaces s) -> return s
+    (Emph inlines) -> return "*" <++> concatMapM inlinePrinter inlines <++> return "*"
+    (Strong inlines) -> return "**" <++> concatMapM inlinePrinter inlines <++> return "**"
+    (EscapedCharInline c) -> return ("\\" ++ [c])
+    (InlineCode delim codes) -> return (delim ++ codes ++ delim)
+    (Link inlines dest) -> return "[" <++> concatMapM inlinePrinter inlines <++> return ("]" ++ "(" ++ dest ++ ")")
+    (Image alt dest) -> return ("![" ++ alt ++ "]" ++ "(" ++ dest ++ ")")
+
+
+listItemPrinter :: ListItem -> State PrinterStatus String
+listItemPrinter (UnorderedListItem ind bullet sps2 items) =
+    blankIndentPrinter ind <++> return (bullet : sps2) <++> 
+    do oldSt <- get
+       put oldSt{defaultIndent = defaultIndent oldSt ++ " " ++ sps2, _skipIndentOnce = True}
+       s <- concatMapM blockPrinter items
+       modify (\st -> st{defaultIndent = defaultIndent oldSt})
+       return s
+
+listItemPrinter (OrderedListItem ind number dot sps2 items) =
+    blankIndentPrinter ind <++> return (number ++ [dot] ++ sps2) <++> 
+    do oldSt <- get
+       put oldSt{ defaultIndent = defaultIndent oldSt ++ replicate (length number + 1) ' ' ++ sps2,
+                  _skipIndentOnce = True }
+       s <- concatMapM blockPrinter items
+       modify (\st -> st{defaultIndent = defaultIndent oldSt})
+       return s
+
+codeLinePrinter :: CodeLine -> State PrinterStatus String
+codeLinePrinter (CodeLine ind code) = indentPrinter ind <++> return code
 
 ----------------------------------
 --------- Parsers ----------------
@@ -250,9 +368,10 @@ blockQuote = try $ do
     let newSt1 = st{ indents = newIndent, skipIndentOnce = True }
     putState newSt1
     blocks <- many1 block
-    putState st
-    return $ BlockQuote (Indent ind) (">") blocks
-    where addIndent st = (indents st) ++ [BlockquoteIndentation]
+    --putState st
+    modifyState (\st2 -> st2{ indents = indents st })
+    return $ BlockQuote (Indent ind) ">" blocks
+    where addIndent st = indents st ++ [BlockquoteIndentation]
 
 -- | Parse an indented code block
 
