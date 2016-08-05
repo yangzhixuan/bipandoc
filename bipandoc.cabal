@@ -31,7 +31,8 @@ library
                        pretty-show,
                        megaparsec,
                        NonEmpty,
-                       strict
+                       strict,
+                       semigroups
 
 
 

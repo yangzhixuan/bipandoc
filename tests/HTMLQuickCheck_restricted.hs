@@ -105,14 +105,14 @@ genHTML' :: Int -> Gen HTML
 genHTML' n = do
   tags <- listOf1 (resize 8 $ genBlockTag' (n `div` 2))
   tags' <- noConsecutiveLists (n `div` 2) tags
-  return $ GTree (CTag Block (Right "html") [] NormalClose)
-           [GTree (CTagText OtherText (TR "\n")) []
-           ,GTree (CTag Block (Right "head") [] NormalClose) [GTree (CTagText OtherText (TR "\n")) []]
-           ,GTree (CTagText OtherText (TR "\n  ")) []
-           ,GTree (CTag Block (Right "body") [] NormalClose) tags']
+  return $ GTreeNode (CTag Block (Right "html") [] NormalClose)
+           [GTreeLeaf (CTagText OtherText (TR "\n"))
+           ,GTreeNode (CTag Block (Right "head") [] NormalClose) [GTreeLeaf (CTagText OtherText (TR "\n"))]
+           ,GTreeLeaf (CTagText OtherText (TR "\n  "))
+           ,GTreeNode (CTag Block (Right "body") [] NormalClose) tags']
 
 genBlockTag' :: Int -> Gen (GTree CTag)
-genBlockTag' 0 = return $ GTree (CTagText OtherText (TR "\n")) []
+genBlockTag' 0 = return $ GTreeLeaf (CTagText OtherText (TR "\n"))
 genBlockTag' n | n > 0 =
   frequency [(1, genComments)
             -- ,(1, return $ GTree (CTagText OtherText (Right "\n")) [])
@@ -124,35 +124,35 @@ genBlockTag' n | n > 0 =
             ,(1, resize 8 $ genHEAD' (n `div` 2) )]
 
 genComments :: Gen (GTree CTag)
-genComments = genSafeString >>= \s -> return $ GTree (CTagComment s) []
+genComments = genSafeString >>= \s -> return $ GTreeLeaf (CTagComment s)
 
 genDIV' :: Int -> Gen (GTree CTag)
-genDIV' n = do {tags <- listOf1 (genBlockTag' (n `div` 2) ); return $ GTree (CTag Block (Left CDiv) [] NormalClose) tags}
+genDIV' n = do {tags <- listOf1 (genBlockTag' (n `div` 2) ); return $ GTreeNode (CTag Block (Left CDiv) [] NormalClose) tags}
 
 genBLOCKCODE :: Gen (GTree CTag)
 genBLOCKCODE =
   genSafeString >>= \s -> return $
-      GTree (CTag Block (Left CPre) [] NormalClose)
-            [GTree (CTag Block (Left CCode) [] NormalClose)
-                   [GTree (CTagCode (s ++ "\n")) []]]
+      GTreeNode (CTag Block (Left CPre) [] NormalClose)
+                [GTreeNode (CTag Block (Left CCode) [] NormalClose)
+                           [GTreeLeaf (CCodeContent (s ++ "\n"))]]
 
 genINLINECODE :: Gen (GTree CTag)
-genINLINECODE = genSafeString >>= (\s -> return $ GTree (CTag Block (Left CCode) [] NormalClose) [GTree (CTagCode (s  ++ "\n")) []])
+genINLINECODE = genSafeString >>= (\s -> return $ GTreeNode (CTag Block (Left CCode) [] NormalClose) [GTreeLeaf (CCodeContent (s  ++ "\n"))])
 
 genUL' :: Int -> Gen (GTree CTag)
-genUL' n = do {lis <- resize 8 $ listOf1 (genLI' (n `div` 2) ); return $ GTree (CTag Block (Left CUnorderedList) [] NormalClose) lis}
+genUL' n = do {lis <- resize 8 $ listOf1 (genLI' (n `div` 2) ); return $ GTreeNode (CTag Block (Left CUnorderedList) [] NormalClose) lis}
 
 genOL' :: Int -> Gen (GTree CTag)
-genOL' n = do {lis <- resize 8 $ listOf1 (genLI' (n `div` 2) ); return $ GTree (CTag Block (Left COrderedList) [] NormalClose) lis}
+genOL' n = do {lis <- resize 8 $ listOf1 (genLI' (n `div` 2) ); return $ GTreeNode (CTag Block (Left COrderedList) [] NormalClose) lis}
 
 noConsecutiveLists :: Int -> [GTree CTag] -> Gen [GTree CTag]
 noConsecutiveLists n [] = return []
 noConsecutiveLists n [x] = return $ [x]
-noConsecutiveLists n (l1@(GTree (CTag _ (Left COrderedList) _ _) _) : l2@(GTree (CTag _ (Left COrderedList) _ _) _) : res) = 
+noConsecutiveLists n (l1@(GTreeNode (CTag _ (Left COrderedList) _ _) _) : l2@(GTreeNode (CTag _ (Left COrderedList) _ _) _) : res) = 
     do p <- genP' (n `div` 2)
        l' <- noConsecutiveLists (n `div` 2) (l2 : res)
        return $ l1 : p : l'
-noConsecutiveLists n (l1@(GTree (CTag _ (Left CUnorderedList) _ _) _) : l2@(GTree (CTag _ (Left CUnorderedList) _ _) _) : res) = 
+noConsecutiveLists n (l1@(GTreeNode (CTag _ (Left CUnorderedList) _ _) _) : l2@(GTreeNode (CTag _ (Left CUnorderedList) _ _) _) : res) = 
     do p <- genP' (n `div` 2)
        l' <- noConsecutiveLists (n `div` 2) (l2 : res)
        return $ l1 : p : l'
@@ -165,20 +165,20 @@ genLI' n = do
   attrs <- listOf genAttributeWithSpace
   blocks <- resize 4 $ listOf (genBlockTag' (n `div` 2) )
   blocks' <- noConsecutiveLists (n `div` 2) blocks
-  return $ GTree (CTag Block (Left CListItem) (concat attrs) NormalClose) blocks'
+  return $ GTreeNode (CTag Block (Left CListItem) (concat attrs) NormalClose) blocks'
 
 genP' :: Int -> Gen (GTree CTag)
 genP' n = do
   attrs <- listOf genAttributeWithSpace
   inlines <- resize 4 $ listOf1 (genInline' (n `div` 2) )
-  return $ GTree (CTag Block (Left CPara) (concat attrs) NormalClose) ( GTree (CTagText InlineText (TR "nonempty")) [] : inlines)
+  return $ GTreeNode (CTag Block (Left CPara) (concat attrs) NormalClose) (GTreeLeaf (CTagText InlineText (TR "nonempty")) : inlines)
 
 genHEAD' :: Int -> Gen (GTree CTag)
 genHEAD' n = do
   attrs <- resize 4 $ listOf genAttributeWithSpace
   inlines <- listOf1 (genInline' (n `div` 2) )
   level <- choose (1,6)
-  return $ GTree (CTag Block (Left (CHead level)) (concat attrs) NormalClose) inlines
+  return $ GTreeNode (CTag Block (Left (CHead level)) (concat attrs) NormalClose) inlines
 
 genAttributeWithSpace :: Gen [Either Spaces Attribute]
 genAttributeWithSpace = do
@@ -192,7 +192,7 @@ genAttributeWithSpace = do
           return $ Attribute name " = " val
 
 genInline' :: Int -> Gen (GTree CTag)
-genInline' 0 = return $ GTree (CTagText InlineText (TR "this is not a space? ")) []
+genInline' 0 = return $ GTreeLeaf (CTagText InlineText (TR "this is not a space? "))
 genInline' n | n > 0 =
   frequency [(6, genInlineText)
 --            ,(1, genComments)
@@ -204,37 +204,37 @@ genInline' n | n > 0 =
 
 
 genInlineText :: Gen (GTree CTag)
-genInlineText = do {txt <- strWithoutSpace; return $ GTree (CTagText InlineText (TR txt)) []}
+genInlineText = do {txt <- strWithoutSpace; return $ GTreeLeaf (CTagText InlineText (TR txt))}
 
 genSTRONG' :: Int -> Gen (GTree CTag)
-genSTRONG' n = do {inlines <- resize 8 $ listOf1 (genInline' (n `div` 4)); attrs <- listOf genAttributeWithSpace; return $ GTree (CTag Inline (Left CStrong) (concat attrs) NormalClose) inlines}
+genSTRONG' n = do {inlines <- resize 8 $ listOf1 (genInline' (n `div` 4)); attrs <- listOf genAttributeWithSpace; return $ GTreeNode (CTag Inline (Left CStrong) (concat attrs) NormalClose) inlines}
 
 genEMPH' :: Int -> Gen (GTree CTag)
-genEMPH' n = do {inlines <- resize 8 $ listOf1 (genInline' (n `div` 4)); attrs <- listOf genAttributeWithSpace; return $ GTree (CTag Inline (Left CEmph) (concat attrs) NormalClose) inlines}
+genEMPH' n = do {inlines <- resize 8 $ listOf1 (genInline' (n `div` 4)); attrs <- listOf genAttributeWithSpace; return $ GTreeNode (CTag Inline (Left CEmph) (concat attrs) NormalClose) inlines}
 
 genIMG :: Gen (GTree CTag)
 genIMG = do
   srcVal <- genSafeString
   altVal <- genSafeString
-  return $ GTree (CTag Inline (Left CImg) [Left " ", Right (Attribute "src" "=" (addQuotes "" srcVal)), Left "  ", Right (Attribute "alt" "=" (addQuotes "" altVal)) ] NoClose) []
+  return $ GTreeLeaf (CTag Inline (Left CImg) [Left " ", Right (Attribute "src" "=" (addQuotes "" srcVal)), Left "  ", Right (Attribute "alt" "=" (addQuotes "" altVal)) ] NoClose)
 
 genLINK' :: Int -> Gen (GTree CTag)
 genLINK' n = do
   inlineTxt <- resize 5 $ listOf1 (genInline' (n `div` 4))
   hrefVal <- genSafeString
-  return $ GTree (CTag Inline (Left CLink) [Left " ", Right (Attribute "href" "=" (addQuotes "" hrefVal))] NormalClose) inlineTxt
+  return $ GTreeNode (CTag Inline (Left CLink) [Left " ", Right (Attribute "href" "=" (addQuotes "" hrefVal))] NormalClose) inlineTxt
 
 -- hard break. <br>
 genBR :: Gen (GTree CTag)
-genBR = return $ GTree (CTag Inline (Left CBr) [] NoClose) []
+genBR = return $ GTreeLeaf (CTag Inline (Left CBr) [] NoClose)
 
 -- soft break. \n
 genSOFTBREAK :: Gen (GTree CTag)
-genSOFTBREAK = return $ GTree (CTagText InlineText (TM "\n")) []
+genSOFTBREAK = return $ GTreeLeaf (CTagText InlineText (TM "\n"))
 
 -- a sequence of spaces of length 1 - 10
 genSpaceInlineText :: Gen (GTree CTag)
-genSpaceInlineText = do {spaces <- genSpaces; return $ GTree (CTagText InlineText (TM spaces)) []}
+genSpaceInlineText = do {spaces <- genSpaces; return $ GTreeLeaf (CTagText InlineText (TM spaces))}
 
 
 

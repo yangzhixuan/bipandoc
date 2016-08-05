@@ -1,8 +1,13 @@
 module Parser.HTMLParserDataType (module Parser.HTMLParserDataType, ppShow) where
 
 import Text.Show.Pretty (ppShow)
+import GHC.Generics
+import Generics.BiGUL
+import Generics.BiGUL.TH
 
-data GTree a = GTree a [GTree a] deriving (Show, Eq)
+-- set the data to GTreeLeaf if it !cannot! have any children (eg. text node, void tag)
+data GTree a = GTreeNode a [GTree a] | GTreeLeaf a deriving (Show, Eq)
+
 
 data HTMLDoc = HTMLDoc Spaces DocType Spaces HTML Spaces deriving (Show, Eq)
 type Spaces = String
@@ -17,7 +22,7 @@ data CTag =
                                       -- OtherText node will only be distinguished as either (TL Entity) or (TR String).
   | CTagScript  String               -- ^ A script node
   | CTagComment String               -- ^ A comment
-  | CTagCode    String               -- ^ verbatim code
+  | CCodeContent    String               -- ^ code
   | CDefaultTag
   deriving (Show, Eq)
 
@@ -57,3 +62,13 @@ data SupportedName =
   | CImg          -- <img>
   deriving (Show, Eq)
 
+deriveBiGULGeneric ''GTree
+deriveBiGULGeneric ''HTMLDoc
+deriveBiGULGeneric ''CTag
+deriveBiGULGeneric ''SupportedName
+deriveBiGULGeneric ''CloseMark
+deriveBiGULGeneric ''TagMark
+deriveBiGULGeneric ''TextMark
+deriveBiGULGeneric ''Attribute
+deriveBiGULGeneric ''TextContents
+deriveBiGULGeneric ''Entity

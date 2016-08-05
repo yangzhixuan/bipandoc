@@ -22,7 +22,7 @@ testGetPut1 :: IO ()
 testGetPut1 = do
   putStrLn "test GetPut"
   putStrLn ""
-  i <- readFile "tests/1.html"
+  i <- readFile "test111.html"
   putStrLn "original HTML document:\n==================="
   putStrLn i
   let htmlCST= parseHTML i
@@ -86,7 +86,7 @@ test1g = do
 
 test1gTrace :: IO ()
 test1gTrace = do
-  i <- readFile "tests/1.html"
+  i <- readFile "test111.html"
   let o  = parseHTML i
       ast = (getTrace htmlBX o)
   putStrLn (ppShow ast)
