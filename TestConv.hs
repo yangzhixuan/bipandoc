@@ -74,7 +74,7 @@ testPutToAnEmptyHTML = test1pModified
 ---------------------------------------------------------
 pHTML1 :: IO HTMLDoc
 pHTML1 = do
-  i <- readFile "tests/1.html"
+  i <- readFile "test111.html"
   let o  = parseHTML i
   return o
 

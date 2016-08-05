@@ -10,11 +10,12 @@ import Data.Char (isSpace)
 import Data.List (groupBy)
 import Data.Maybe (fromJust, fromMaybe)
 import Control.Monad (liftM, replicateM)
-import qualified Data.List.NonEmpty as DLN ( NonEmpty((:|)) )
+import qualified Data.List.NonEmpty as DLN ( NonEmpty((:|)), fromList )
 import Data.Map as Map (fromList, Map, lookup, union, singleton, keys, findWithDefault)
 import Text.Show.Pretty (ppShow)
 
 import Control.Monad.Writer
+import qualified Data.Set as Set (fromList, singleton, empty)
 
 import Debug.Trace
 
@@ -72,7 +73,7 @@ parseDoc = do
   space0 <- spaceChars
   d      <- pDocType
   space1 <- spaceChars
-  html   <- pHTML
+  html   <- pHTMLNode
   space2 <- spaceChars <?> "trailing spaces at end of the html file"
   eof
   return $ HTMLDoc space0 d space1 html space2
@@ -89,18 +90,18 @@ pDocType = do
   <?> "pDocType"
 
 
-pHTML :: PU HTML
-pHTML = do
-  (CTag _ tn sOrA _) <- pTagOpen
-  inner <- many anyNode <?> "\tparse <head> or <body> fail. maybe they are not closed properly?"
-  (string "</html>") <?> "</html>, is <html> closed properly?"
+pHTMLNode :: PU HTML
+pHTMLNode = do
+  CTag _ tn sOrA _ <- pTagOpen
+  inner <- many pAnyNode <?> "\tparse <head> or <body> fail. maybe they are not closed properly?"
+  string "</html>" <?> "</html>, is <html> closed properly?"
   return $ GTreeNode (CTag Block tn sOrA NormalClose) inner
   <?> "error in parsing html tag"
 
 pTagElement :: PU HTML
 pTagElement = do
   posO <-getPosition
-  (CTag _ tn sOrA maybeSelfClose) <- try pTagSelfClose <|> pTagOpen
+  CTag _ tn sOrA maybeSelfClose <- pTagSelfCloseOrOpen
   GTreeNode (CTag _ bb cc dd) ee <-
     case maybeSelfClose of
       SelfClose -> return $ GTreeNode (CTag undefined tn sOrA SelfClose) [] -- set to GTreeNode for easier handling. changed to GTreeLeaf later in this function
@@ -108,7 +109,7 @@ pTagElement = do
         if isVoidElement (prtCTagName tn)
           then return $ GTreeNode (CTag undefined tn sOrA NoClose) []  -- for void element.
           else do
-            inner <- many (try anyNode)
+            inner <- many pAnyNode
             posC  <- getPosition
             tc    <- pTagClose
             if (prtCTagName tn) == tc
@@ -119,8 +120,8 @@ pTagElement = do
   return $ if isVoidElement (prtCTagName bb) then GTreeLeaf (CTag aa bb cc dd) else GTreeNode (CTag aa bb cc dd) ee
   <?> "pTagElement"
 
-anyNode :: PU HTML
-anyNode = try pScriptTag <|>  try pTagCode <|> try pTagElement <|> try pTagComment <|> pTagText <?> "parse tags fail. maybe some tags are not closed properly"
+pAnyNode :: PU HTML
+pAnyNode = try pScriptTag <|> try pTagCode <|> try pTagElement <|> try pTagComment <|> pTagText <?> "parse tags fail. maybe some tags are not closed properly"
 
 isInlineTag :: CTagName -> Bool
 isInlineTag (Left tag) = isInlineTag' tag
@@ -129,25 +130,41 @@ isInlineTag (Right _)  = False
 isInlineTag' :: SupportedName -> Bool
 isInlineTag' = flip elem [CEmph, CStrong, CStrike, CImg, CLink, CBr]
 
-pTagSelfClose :: PU CTag
-pTagSelfClose = do
-  lab  <- char '<'
+pTagSelfCloseOrOpen :: PU CTag
+pTagSelfCloseOrOpen = do
+  char '<'
   tn   <- pTagName
-  sOrA <- many spacesOrAttr
-  rab  <- string "/>"
-  case Map.lookup tn supportedName of
-    Nothing  -> return $ CTag NotDecidedTagMark (Right tn) (mergeSpaces sOrA) SelfClose
-    Just tn' -> return $ CTag NotDecidedTagMark (Left tn') (mergeSpaces sOrA) SelfClose
-  <?> "pTagSelfClose"
+  sOrA <- many (spacesOrAttr <?> "parse attribute error")
+  ((   string "/>" >>
+       case Map.lookup tn supportedName of
+         Nothing  -> return $ CTag NotDecidedTagMark (Right tn) (mergeSpaces sOrA) SelfClose
+         Just tn' -> return $ CTag NotDecidedTagMark (Left tn') (mergeSpaces sOrA) SelfClose) <|>
+   (   char '>' >>
+       case Map.lookup tn supportedName of
+         Nothing  -> return $ CTag NotDecidedTagMark (Right tn) (mergeSpaces sOrA) NotDecidedCloseMark
+         Just tn' -> return $ CTag NotDecidedTagMark (Left tn') (mergeSpaces sOrA) NotDecidedCloseMark))
+  <?> "ptag selfclose or open"
 
 
+-- pTagSelfClose :: PU CTag
+-- pTagSelfClose = do
+--   char '<'
+--   tn   <- pTagName
+--   sOrA <- many spacesOrAttr <?> "parse attribute error"
+--   string "/>"
+--   case Map.lookup tn supportedName of
+--     Nothing  -> return $ CTag NotDecidedTagMark (Right tn) (mergeSpaces sOrA) SelfClose
+--     Just tn' -> return $ CTag NotDecidedTagMark (Left tn') (mergeSpaces sOrA) SelfClose
+--   <?> "pTagSelfClose"
+-- 
+-- 
 -- TagOpen preSpaces TagName [Either Spaces Attribute]
 pTagOpen :: PU CTag
 pTagOpen = do
-  lab  <- char '<'
+  char '<'
   tn   <- pTagName
-  sOrA <- many spacesOrAttr
-  rab  <- char '>'
+  sOrA <- many spacesOrAttr <?> "parse attribute error"
+  char '>'
   case Map.lookup tn supportedName of
     Nothing  -> return $ CTag NotDecidedTagMark (Right tn) (mergeSpaces sOrA) NotDecidedCloseMark
     Just tn' -> return $ CTag NotDecidedTagMark (Left tn') (mergeSpaces sOrA) NotDecidedCloseMark
@@ -190,6 +207,7 @@ pTagCode = do
 
 spacesOrAttr :: PU (Either Spaces Attribute)
 spacesOrAttr = (spaceChar >>= return . Left . flip (:) []) <|> (pAttribute >>= return . Right)
+  <?> "error when parsing attributes"
 
 pTagName :: PU String
 pTagName = some (lowerChar <|> digitChar) <?> "tag name must be lower characters and digits"
@@ -221,14 +239,14 @@ pAttribute = do
 
 pScriptTag :: PU HTML
 pScriptTag = do
-  CTag _ tn sOrA maybeSelfClose <- try pTagSelfClose <|> pTagOpen
+  CTag _ tn sOrA maybeSelfClose <- pTagSelfCloseOrOpen
   if (prtCTagName tn) == "script"
   then  case maybeSelfClose of
           SelfClose -> return $ GTreeLeaf (CTagScript $ "<" ++ (prtCTagName tn) ++ flatSorAs sOrA  ++ "/>")
           NotDecidedCloseMark -> do
             txt <- manyTill anyChar (string "</script>")
             return $ GTreeLeaf (CTagScript $ wrapTagO ((prtCTagName tn) ++ flatSorAs sOrA) ++ txt ++ "</script>")
-  else unexpected (Label ((DLN.:|) 's' []) )
+  else failure (Set.singleton (Tokens (DLN.fromList "not a script tag, try other parsers"))) (Set.empty) (Set.empty)
 
 
 
