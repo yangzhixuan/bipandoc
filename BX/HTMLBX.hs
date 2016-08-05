@@ -10,8 +10,8 @@ import Generics.BiGUL.Interpreter
 import Abstract
 import BX.BXHelpers
 
-import Parser.HTMLParser
-import Parser.HTMLParserDataType
+import CST.HTMLParser
+import CST.HTMLParserDataType
 import Text.Megaparsec hiding (State)
 import qualified System.IO.Strict as IOS
 import Control.Monad.State as State

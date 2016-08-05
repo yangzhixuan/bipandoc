@@ -1,9 +1,10 @@
 {-# Language TemplateHaskell, TypeFamilies #-}
 
-module Parser.Markdown where
+module CST.Markdown where
 
 import Data.Char
 import Data.Maybe
+import Text.Read (readMaybe)
 import Text.Parsec.Prim hiding (State)
 import Text.Parsec.Char
 import Text.Parsec.Text
@@ -36,9 +37,12 @@ data Block = Para Indent [Inline] -- indent, inlines
            | FencedCode Indent String String [CodeLine] Indent String String -- indent, fence, spaces, code lines, indent, fence, spaces
     deriving (Show, Eq)
 
+data ListItemNumber = ListItemNumber String | DefaultItemNumber
+    deriving (Show, Eq)
+
 data ListItem = UnorderedListItem Indent Char String [Block]
                                 -- indent, bullet, spaces, items
-              | OrderedListItem Indent String Char String [Block]
+              | OrderedListItem Indent ListItemNumber Char String [Block]
                                 -- indent, number, dot, spaces, items
     deriving (Show, Eq) 
 
@@ -72,63 +76,10 @@ defaultMarkdown = ""
 putPretty :: Show a => a -> IO ()
 putPretty = putStr . ppShow 
 
-{-
-printMarkdown' :: MarkdownDoc -> String
-printMarkdown' (MarkdownDoc blks) = concatMap (printBlock "" False) blks
-
-printIndent :: String -> Indent -> String
-printIndent defaultIndent DefaultIndent = defaultIndent
-printIndent defaultIndent (Indent s) = s
-
--- For block elements created by BX, we insert a blankline before it
-insertBlankLine defaultIndent DefaultIndent = defaultIndent ++ "\n"
-insertBlankLine defaultIndent (Indent _) = ""
-
-printBlock :: String -> Bool -> Block -> String
-printBlock defaultIndent skipFirstIndent block = case block of
-    (BlankLine ind s) -> pInd ind ++ s
-    (Para ind inls) -> pInd ind ++ (concatMap (printInline defaultIndent) inls) ++ "\n"
-    (ATXHeading ind atxs sps heading atx2 sps2) -> pInd ind ++ atxs ++ sps ++ (concatMap (printInline defaultIndent) heading) ++ atx2 ++ sps2
-    (SetextHeading ind heading sps2 ind2 unls sps) -> pInd ind ++ (concatMap (printInline defaultIndent) heading) ++ sps2 ++ pInd2 ind2 ++ unls ++ sps
-    (UnorderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
-    (OrderedList (it1:items)) -> printListItem defaultIndent skipFirstIndent it1 ++ concatMap (printListItem defaultIndent False) items
-    (BlockQuote ind str (b1:bs)) -> pInd ind ++ str ++ printBlock (defaultIndent ++ ">") True b1 ++ (concatMap (printBlock (defaultIndent ++ ">") False) bs)
-    (IndentedCode codes) -> (if length codes > 0 && (\(CodeLine ind _) -> ind == DefaultIndent) (head codes) then "\n" else "") ++ concatMap (printCodeLine (defaultIndent ++ "    ")) codes
-    (FencedCode i1 f1 s1 codes i2 f2 s2) -> (pInd i1) ++ f1 ++ s1 ++ concatMap (printCodeLine defaultIndent) codes ++ pInd2 i2 ++ f2 ++ s2
-    where pInd ind = if skipFirstIndent && (ind == DefaultIndent) then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
-          pInd2 ind = printIndent defaultIndent ind
-
-printInline :: String -> Inline -> String
-printInline defaultIndent inline = case inline of 
-    (Str s) -> s
-    (Softbreak ind) -> "\n" ++ pInd ind
-    (Hardbreak s ind) -> s ++ "\n" ++ pInd ind
-    (Spaces s) -> s
-    (Emph inlines) -> "*" ++ (concatMap (printInline defaultIndent) inlines) ++ "*"
-    (Strong inlines) -> "**" ++ (concatMap (printInline defaultIndent) inlines) ++ "**"
-    (EscapedCharInline c) -> "\\" ++ [c]
-    (InlineCode delim codes) -> delim ++ codes ++ delim
-    (Link inlines dest) -> "[" ++ (concatMap (printInline defaultIndent) inlines) ++ "]" ++ "(" ++ dest ++ ")"
-    (Image alt dest) -> "![" ++ alt ++ "]" ++ "(" ++ dest ++ ")"
-    where pInd = printIndent defaultIndent
-
-printListItem :: String -> Bool -> ListItem -> String
-printListItem defaultIndent skipFirstIndent (UnorderedListItem ind bullet sps2 (it1:items)) = pInd ind ++ [bullet] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
-    where pInd ind = if skipFirstIndent && (ind == DefaultIndent) then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
-          newIndent = defaultIndent ++ " " ++ sps2
-
-printListItem defaultIndent skipFirstIndent (OrderedListItem ind number dot sps2 (it1:items)) = pInd ind ++ number ++ [dot] ++ sps2 ++ printBlock newIndent True it1 ++ concatMap (printBlock newIndent False) items
-    where pInd ind = if skipFirstIndent && (ind == DefaultIndent) then "" else insertBlankLine defaultIndent ind ++ printIndent defaultIndent ind
-          newIndent = defaultIndent ++ (replicate (length number + 1) ' ') ++ sps2
-
-printCodeLine :: String -> CodeLine -> String
-printCodeLine defaultIndent (CodeLine ind code) = printIndent defaultIndent ind ++ code
--}
-
 printMarkdown :: MarkdownDoc -> String
-printMarkdown md = evalState (markdownPrinter md) (PrinterStatus "" False False)
+printMarkdown md = evalState (markdownPrinter md) (PrinterStatus "" False False 0)
 
-data PrinterStatus = PrinterStatus{ defaultIndent :: String, _skipIndentOnce :: Bool, notFirstLine :: Bool }
+data PrinterStatus = PrinterStatus{ defaultIndent :: String, _skipIndentOnce :: Bool, notFirstLine :: Bool, lastListNum :: Int }
 
 markdownPrinter :: MarkdownDoc -> State PrinterStatus String
 markdownPrinter (MarkdownDoc blks) = do
@@ -182,7 +133,12 @@ blockPrinter blk = case blk of
 
     (UnorderedList items) -> concatMapM listItemPrinter items
 
-    (OrderedList items) -> concatMapM listItemPrinter items
+    (OrderedList items) -> 
+        do oldCounter <- fmap lastListNum get
+           modify (\st -> st{lastListNum = 0})
+           s <- concatMapM listItemPrinter items
+           modify (\st -> st{lastListNum = oldCounter})
+           return s
 
     (BlockQuote ind str bs) ->
         blankIndentPrinter ind <++> return str <++>
@@ -229,13 +185,26 @@ listItemPrinter (UnorderedListItem ind bullet sps2 items) =
        return s
 
 listItemPrinter (OrderedListItem ind number dot sps2 items) =
-    blankIndentPrinter ind <++> return (number ++ [dot] ++ sps2) <++> 
-    do oldSt <- get
-       put oldSt{ defaultIndent = defaultIndent oldSt ++ replicate (length number + 1) ' ' ++ sps2,
-                  _skipIndentOnce = True }
-       s <- concatMapM blockPrinter items
-       modify (\st -> st{defaultIndent = defaultIndent oldSt})
-       return s
+    blankIndentPrinter ind <++> do
+        numStr <- itemNumberPrinter number 
+        oldSt <- get
+        put oldSt{ defaultIndent = defaultIndent oldSt ++ replicate (length numStr + 1) ' ' ++ sps2,
+                   _skipIndentOnce = True }
+        s <- concatMapM blockPrinter items
+        modify (\st -> st{defaultIndent = defaultIndent oldSt})
+        return $ numStr ++ [dot] ++ sps2 ++ s
+
+itemNumberPrinter :: ListItemNumber -> State PrinterStatus String
+itemNumberPrinter (ListItemNumber s) = do
+    let num = fromMaybe 0 (readMaybe s) :: Int
+    modify (\st -> st{lastListNum = num})
+    return s
+
+itemNumberPrinter DefaultItemNumber = do
+    num <- fmap lastListNum get
+    let newNum = num + 1
+    modify (\st -> st{lastListNum = newNum})
+    return (show newNum)
 
 codeLinePrinter :: CodeLine -> State PrinterStatus String
 codeLinePrinter (CodeLine ind code) = indentPrinter ind <++> return code
@@ -487,7 +456,7 @@ orderedListItem = try $ do
     blocks <- many1 block
     putState st
 
-    return $ OrderedListItem (Indent ind) num ch sp2 blocks
+    return $ OrderedListItem (Indent ind) (ListItemNumber num) ch sp2 blocks
     where addIndent st k = (indents st) ++ [SpaceIndentation k]
 
 orderedList :: Parsec String ParserStatus Block
