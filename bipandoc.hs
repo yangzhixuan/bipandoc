@@ -9,8 +9,8 @@ import Abstract
 import qualified BX.HTMLBX as HTMLBX
 import qualified BX.MarkdownBX as MarkdownBX
 
-import qualified Parser.HTMLParser as HTMLParser
-import qualified Parser.Markdown as MarkdownParser
+import qualified CST.HTMLParser as HTMLParser
+import qualified CST.Markdown as MarkdownParser
 
 import Data.Maybe
 import System.Environment

@@ -8,9 +8,9 @@ import BX.BXHelpers
 import qualified BX.MarkdownBX as BXM (markdownBX)
 import BX.HTMLBX
 
-import Parser.HTMLParser
-import Parser.HTMLParserDataType
-import Parser.Markdown
+import CST.HTMLParser
+import CST.HTMLParserDataType
+import CST.Markdown
 
 import Text.Megaparsec
 

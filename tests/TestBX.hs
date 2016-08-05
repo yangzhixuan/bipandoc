@@ -14,8 +14,8 @@ import Generics.BiGUL.Interpreter
 import Generics.BiGUL.TH
 
 import Abstract
-import Parser.Markdown
-import Parser.HTMLParser
+import CST.Markdown
+import CST.HTMLParser
 import BX.MarkdownBX
 import BX.HTMLBX
 

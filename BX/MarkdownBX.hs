@@ -11,7 +11,7 @@ import Generics.BiGUL.TH
 import BX.BXHelpers
 
 import Abstract
-import Parser.Markdown
+import CST.Markdown
 
 import Debug.Trace
 
@@ -132,7 +132,7 @@ blockBX =
 
 createListItem :: AbsListItem -> ListItem
 createListItem (AbsUnorderedListItem items) = UnorderedListItem DefaultIndent '*' " " (if null items then [BlankLine (Indent "") "\n"] else [])
-createListItem (AbsOrderedListItem items) = OrderedListItem DefaultIndent "1" '.' " " (if null items then [BlankLine (Indent "") "\n"] else [])
+createListItem (AbsOrderedListItem items) = OrderedListItem DefaultIndent DefaultItemNumber '.' " " (if null items then [BlankLine (Indent "") "\n"] else [])
 
 
 unorderedListItemBX :: BiGUL ListItem AbsListItem
@@ -142,8 +142,6 @@ unorderedListItemBX = $(update [p| UnorderedListItem _ _ _ x |] [p| AbsUnordered
 orderedListItemBX :: BiGUL ListItem AbsListItem
 orderedListItemBX = $(update [p| OrderedListItem _ _ _ _ x |] [p| AbsOrderedListItem x |]
                                [d| x = blockListBX |])
-
-
 
 inlineListBX :: BiGUL [Inline] [AbsInline]
 inlineListBX = (mapLens inlineBX createInline) `Compose` concatAbsStrLens
@@ -176,7 +174,7 @@ splitAbsStr _ viewStr = concatMap refine viewStr
                       then if null a then AbsStr [head b] : refine (AbsStr (tail b)) else AbsStr a : AbsStr [(head b)] : refine (AbsStr (tail b))
                       else error "should not reach here. splitAbsStr."
         refine a = [a]
-        pred e = e `elem` Parser.Markdown.punctuation
+        pred e = e `elem` CST.Markdown.punctuation
 
 inlineBX :: BiGUL Inline AbsInline
 inlineBX =

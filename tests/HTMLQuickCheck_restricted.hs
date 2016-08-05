@@ -1,8 +1,8 @@
 module HTMLQuickCheck where
 
-import Parser.Markdown
-import Parser.HTMLParser
-import Parser.HTMLParserDataType
+import CST.Markdown
+import CST.HTMLParser
+import CST.HTMLParserDataType
 import BX.HTMLBX
 import BX.MarkdownBX
 import Abstract

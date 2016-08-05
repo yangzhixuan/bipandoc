@@ -2,9 +2,9 @@
 
 -- todo: keep spaces and linebreaks in <pre>. treat them as what they are
 
-module Parser.HTMLParser (parseHTML, prtDocument, prtDocumentBody, isSupportedNode, emptyHTMLCST, emptyHTMLStr) where
+module CST.HTMLParser (parseHTML, prtDocument, prtDocumentBody, isSupportedNode, emptyHTMLCST, emptyHTMLStr) where
 
-import Parser.HTMLParserDataType
+import CST.HTMLParserDataType
 import Text.Megaparsec
 import Data.Char (isSpace)
 import Data.List (groupBy)

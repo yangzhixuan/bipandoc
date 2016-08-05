@@ -1,4 +1,4 @@
-module Parser.HTMLParserDataType (module Parser.HTMLParserDataType, ppShow) where
+module CST.HTMLParserDataType (module CST.HTMLParserDataType, ppShow) where
 
 import Text.Show.Pretty (ppShow)
 
