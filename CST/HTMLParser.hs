@@ -2,7 +2,7 @@
 
 -- todo: keep spaces and linebreaks in <pre>. treat them as what they are
 
-module CST.HTMLParser (parseHTML, prtDocument, prtDocumentBody, isSupportedNode, emptyHTMLCST, emptyHTMLStr) where
+module CST.HTMLParser (parseHTML, parseHTMLBody, prtDocument, prtDocumentBody, isSupportedNode, emptyHTMLCST, emptyHTMLStr, emptyHTMLBodyStr) where
 
 import CST.HTMLParserDataType
 import Text.Megaparsec
@@ -156,7 +156,7 @@ pText = do
   case c of
     '<' -> unexpected (Label ((DLN.:|) '<' []) )
     _   -> do
-          text <- someTill anyChar (lookAhead (string "<") )
+          text <- someTill anyChar (lookAhead ((string "<") <|> (eof >> return "")) )
           return $ GTreeLeaf (CTagText NotDecidedTextMark (TR text))
   <?> "pText"
 
@@ -424,16 +424,23 @@ isSubtreeInline _ = False
 parseHTML :: String -> HTMLDoc
 parseHTML src = refineDoc $ either (error . parseErrorPretty) id (runParser parseDoc "" src)
 
-emptyHTMLCST :: HTMLDoc
-emptyHTMLCST = HTMLDoc ""  doctype " " html "\n"
-      where doctype = "<!DOCTYPE HTML>"
-            html    = (GTreeNode (CTag Block (Right "html") [] NormalClose)
-                             [GTreeLeaf (CTagText OtherText (TR "\n"))
-                             ,GTreeNode (CTag Block (Right "head") [] NormalClose) [GTreeLeaf (CTagText OtherText (TR "\n"))]
-                             ,GTreeLeaf (CTagText OtherText (TR "\n  "))
-                             ,GTreeNode (CTag Block (Right "body") [] NormalClose) []])
+parseHTMLBody :: String -> HTMLDoc
+parseHTMLBody src = refineDoc $ embHTMLBody (either (error . parseErrorPretty) id (runParser (many pAnyNode) "" src))
+
+embHTMLBody :: [HTML] -> HTMLDoc
+embHTMLBody body = HTMLDoc ""  doctype " " html "\n"
+    where doctype = "<!DOCTYPE HTML>"
+          html    = (GTreeNode (CTag Block (Right "html") [] NormalClose)
+                        [GTreeLeaf (CTagText OtherText (TR "\n"))
+                        ,GTreeNode (CTag Block (Right "head") [] NormalClose) [GTreeLeaf (CTagText OtherText (TR "\n"))]
+                        ,GTreeLeaf (CTagText OtherText (TR "\n  "))
+                        ,GTreeNode (CTag Block (Right "body") [] NormalClose) body])
+
+emptyHTMLCST = embHTMLBody []
 
 emptyHTMLStr = "<!DOCTYPE HTML>\n<html>\n<head>\n</head>\n<body>\n</body>\n</html>"
+
+emptyHTMLBodyStr = ""
 
 t1 :: IO ()
 t1 = do

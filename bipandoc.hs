@@ -39,6 +39,7 @@ optsWithInfo = OA.info (OA.helper <*> optsParser) (OA.fullDesc <> OA.progDesc "S
 get :: Options -> String -> Maybe AbsDocument
 get opt src = case srcFormat opt of
     "html" -> BiGUL.get HTMLBX.htmlBX (HTMLParser.parseHTML src)
+    "html-body" -> BiGUL.get HTMLBX.htmlBX (HTMLParser.parseHTMLBody src)
     "markdown" -> BiGUL.get MarkdownBX.markdownBX (MarkdownParser.parseMarkdown (addNewline src))
     f -> error ("Invalid source format: " ++ f)
     where addNewline s = if null s || last s /= '\n' then s ++ "\n" else s
@@ -46,6 +47,7 @@ get opt src = case srcFormat opt of
 getTrace :: Options -> String -> BiGULTrace
 getTrace opt src = case srcFormat opt of
     "html" -> BiGUL.getTrace HTMLBX.htmlBX (HTMLParser.parseHTML src)
+    "html-body" -> BiGUL.getTrace HTMLBX.htmlBX (HTMLParser.parseHTMLBody src)
     "markdown" -> BiGUL.getTrace MarkdownBX.markdownBX (MarkdownParser.parseMarkdown (addNewline src))
     f -> error ("Invalid source format: " ++ f)
     where addNewline s = if null s || last s /= '\n' then s ++ "\n" else s
@@ -56,7 +58,7 @@ put opt src view = case dstFormat opt of
 
     "html" -> put' (HTMLBX.htmlBX, HTMLParser.parseHTML, HTMLParser.prtDocument)
 
-    "html-body" -> put' (HTMLBX.htmlBX, HTMLParser.parseHTML, HTMLParser.prtDocumentBody)
+    "html-body" -> put' (HTMLBX.htmlBX, HTMLParser.parseHTMLBody, HTMLParser.prtDocumentBody)
 
     "markdown" -> put' (MarkdownBX.markdownBX, MarkdownParser.parseMarkdown, MarkdownParser.printMarkdown)
 
@@ -81,6 +83,8 @@ putTrace opt src view = case dstFormat opt of
 
     "html" -> put' (HTMLBX.htmlBX, HTMLParser.parseHTML, HTMLParser.prtDocument)
 
+    "html-body" -> put' (HTMLBX.htmlBX, HTMLParser.parseHTMLBody, HTMLParser.prtDocumentBody)
+
     "markdown" -> put' (MarkdownBX.markdownBX, MarkdownParser.parseMarkdown, MarkdownParser.printMarkdown)
 
     f -> error ("Invalid target format: " ++ f)
@@ -91,7 +95,7 @@ defaultDocument :: String -> String
 defaultDocument format = 
     case format of
         "html" -> HTMLParser.emptyHTMLStr
-        "html-body" -> HTMLParser.emptyHTMLStr
+        "html-body" -> HTMLParser.emptyHTMLBodyStr
         "markdown" -> MarkdownParser.defaultMarkdown
         _ -> ""
 
