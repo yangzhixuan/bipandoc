@@ -148,7 +148,11 @@ orderedListItemBX = $(update [p| OrderedListItem _ _ _ _ x |] [p| AbsOrderedList
 inlineListBX :: BiGUL [Inline] [AbsInline]
 inlineListBX = (mapLens inlineBX createInline) `Compose` concatAbsStrLens
 
-createInline = const $ Str ""
+-- For AbsStr, we use EscapedCharInline as default, so that AbsStr '*' will be created as EscapedCharInline
+createInline (AbsStr c) = if length c == 1 && head c `elem` "*-[]~`"
+                             then EscapedCharInline '*'
+                             else Str ""
+createInline _ = Str ""
 
 -- A convention in AST is that no consecutive non-space AbsStr should appear.
 -- So we concatenate/split AbsStr in a lens.

@@ -70,9 +70,9 @@ put opt src view = case dstFormat opt of
                else if BiGUL.get bx (parser result) /= Just view
                        then do 
                            traceM "Format ambiguity detected! get(parser(result)) /= original_ast"
-                           -- traceM $ "the original view is:" ++ (ppShow view)
-                           -- traceM "vs"
-                           -- traceM $ "get(parser(output)) is:" ++ (ppShow $ BiGUL.get bx (parser result))
+                           traceM $ "the original view is:\n" ++ (ppShow (Just view))
+                           traceM "vs"
+                           traceM $ "get(parser(output)) is:\n" ++ (ppShow $ BiGUL.get bx (parser result))
                            return result
                        else return result
 
