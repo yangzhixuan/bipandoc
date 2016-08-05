@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeFamilies, TemplateHaskell #-}
+
 module Parser.HTMLParserDataType (module Parser.HTMLParserDataType, ppShow) where
 
 import Text.Show.Pretty (ppShow)

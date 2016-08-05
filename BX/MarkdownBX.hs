@@ -19,6 +19,8 @@ markdownBX :: BiGUL MarkdownDoc AbsDocument
 markdownBX = $(update [p| MarkdownDoc x |] [p| AbsDocument x |]
                       [d| x = blockListBX |])
 
+-- A BX checking the validity of the AST. It can be composed with blockListBX
+-- However it is not used in current program.
 checkBX :: BiGUL [AbsBlock] [AbsBlock]
 checkBX = 
     Case [
@@ -37,7 +39,7 @@ checkBX =
 
 
 blockListBX :: BiGUL [Block] [AbsBlock]
-blockListBX = (filterLens nonBlankLines) `Compose` (mapLens blockBX createBlock) `Compose` checkBX
+blockListBX = (filterLens nonBlankLines) `Compose` (mapLens blockBX createBlock) -- `Compose` checkBX
     where nonBlankLines (BlankLine _ _) = False
           nonBlankLines _ = True
           createBlock = const $ Para DefaultIndent []
@@ -52,11 +54,11 @@ blockBX =
            ==> \_ v -> Para DefaultIndent []
 
            -- Case: AbsHeading
-         , $(normalSV [p| ATXHeading _ _ _ _ _ _ |] [p| AbsHeading _ _ |] [p| ATXHeading _ _ _ _ _ _ |])
+         , $(normalSV [p| ATXHeading{} |] [p| AbsHeading _ _ |] [p| ATXHeading{} |])
            ==> $(update [p| ATXHeading _ atx _ heading _ _ |] [p| AbsHeading atx heading |]
                         [d| atx = atxBX; heading = inlineListBX |])
 
-         , $(normal [| \(SetextHeading _ _ _ _ _ _) (AbsHeading level _) -> level == 1 || level == 2|] [| \(SetextHeading _ _ _ _ _ _) -> True |])
+         , $(normal [| \SetextHeading{} (AbsHeading level _) -> level == 1 || level == 2|] [| \SetextHeading{} -> True |])
            ==> $(update [p| SetextHeading _ heading _ _ setextLine _ |] [p| AbsHeading setextLine heading |]
                         [d| heading = inlineListBX; setextLine = setextLineBX |])
 
@@ -80,7 +82,7 @@ blockBX =
            ==> \s v -> OrderedList []
 
            -- Case: AbsBlockQuote
-         , $(normalSV [p| BlockQuote _ _ _ |] [p| AbsBlockQuote _ |] [p| BlockQuote _ _ _ |])
+         , $(normalSV [p| BlockQuote{} |] [p| AbsBlockQuote _ |] [p| BlockQuote{} |])
            ==> $(update [p| BlockQuote _ _ blocks |] [p| AbsBlockQuote blocks |]
                         [d| blocks = blockListBX |])
 
@@ -92,7 +94,7 @@ blockBX =
            ==> $(update [p| IndentedCode codes |] [p| AbsCode codes |]
                         [d| codes = codeBX |])
 
-         , $(normalSV [p| FencedCode _ _ _ _ _ _ _ |] [p| AbsCode _ |] [p| FencedCode _ _ _ _ _ _ _ |])
+         , $(normalSV [p| FencedCode{} |] [p| AbsCode _ |] [p| FencedCode{} |])
            ==> $(update [p| FencedCode _ _ _ codes _ _ _ |] [p| AbsCode codes |]
                         [d| codes = codeBX' |])
 
@@ -106,7 +108,7 @@ blockBX =
 
                -- FIXME Currently, we only allow code block terminating with a newline.
                -- This should be finished after migrating to super-view framework.
-               codeBX = Case [ $(normal [| (\s v -> length v > 0 && last v /= '\n') |] [| const False |] )
+               codeBX = Case [ $(normal [| (\s v -> not (null v) && last v /= '\n') |] [| const False |] )
                                 (Fail "markdown requires a newline as the last char in a code block"),
 
                                $(normal [| \_ _ -> True |] [| const True |])
@@ -167,10 +169,10 @@ splitAbsStr _ viewStr = concatMap refine viewStr
           in  if null b
                 then if null a then [] else [AbsStr a]
                 else if pred (head b)
-                      then if null a then AbsStr [(head b)] : refine (AbsStr (tail b)) else AbsStr a : AbsStr [(head b)] : refine (AbsStr (tail b))
+                      then if null a then AbsStr [head b] : refine (AbsStr (tail b)) else AbsStr a : AbsStr [(head b)] : refine (AbsStr (tail b))
                       else error "should not reach here. splitAbsStr."
         refine a = [a]
-        pred e = elem e Parser.Markdown.punctuation
+        pred e = e `elem` Parser.Markdown.punctuation
 
 inlineBX :: BiGUL Inline AbsInline
 inlineBX =
@@ -184,12 +186,15 @@ inlineBX =
            -- Case: AbsStr is a punctuation
          , $(normal [| \(EscapedCharInline _) (AbsStr s) -> length s == 1 && head s `elem` punctuation |]
                     [| \(EscapedCharInline _) -> True |])
-           ==> $(update [p| EscapedCharInline c |] [p| AbsStr (c : []) |]
+           ==> $(update [p| EscapedCharInline c |] [p| AbsStr (c : "") |]
                         [d| c = Replace |])
 
            -- Case: AbsStr
          , $(normalSV [p| Str _ |] [p| AbsStr _ |] [p| Str _ |])
            ==> $(update [p| Str x |] [p| AbsStr x |] [d| x = Replace |])
+
+         , $(adaptive [| \_ (AbsStr s) -> length s == 1 && head s `elem` punctuation |])
+           ==> \s v -> (EscapedCharInline ' ')
 
          , $(adaptiveSV [p| _ |] [p| AbsStr _ |])
            ==> \_ v -> Str ""

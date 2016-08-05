@@ -1,4 +1,3 @@
-
 import qualified Generics.BiGUL
 import qualified Generics.BiGUL.Interpreter as BiGUL
 import qualified Generics.BiGUL.TH
@@ -16,21 +15,25 @@ import qualified Parser.Markdown as MarkdownParser
 import Data.Maybe
 import System.Environment
 import System.IO
+import System.Exit
+import Text.Show.Pretty
 import qualified Options.Applicative as OA
 import Options.Applicative ((<>), (<$>), (<*>))
 
 import Debug.Trace 
 
-data Options = Options { srcFormat :: String, dstFormat :: String, dstFile :: String, outputFile :: String, srcFile :: String } deriving (Show)
+data Options = Options { srcFormat :: String, dstFormat :: String, dstFile :: String, outputFile :: String, checkAmbiguity :: Bool, srcFile :: String } deriving (Show)
+
+withDefaultValue a = fmap (fromMaybe a)
 
 optsParser = Options <$> OA.strOption ( OA.long "from" <> OA.short 'f' <> OA.metavar "FORMAT" <> OA.help "Source format")
-                    <*> OA.strOption ( OA.long "to" <> OA.short 't' <> OA.metavar "FORMAT" <> OA.help "Destination format")
-                    <*> (fmap (fromMaybe "") $ OA.optional (OA.strOption ( OA.long "dst" <> OA.short 'd' <> OA.metavar "FILENAME" <> OA.help "Destination filename. Use an empty document if not specified.")))
-                    <*> (fmap (fromMaybe "") $  OA.optional (OA.strOption ( OA.long "output" <> OA.short 'o' <> OA.metavar "FILENAME" <> OA.help "Output filename")))
-                    <*> (fmap (fromMaybe "") $ OA.optional $ OA.argument OA.str (OA.metavar "FILE"))
+                     <*> OA.strOption ( OA.long "to" <> OA.short 't' <> OA.metavar "FORMAT" <> OA.help "Destination format")
+                     <*> withDefaultValue "" (OA.optional (OA.strOption ( OA.long "dst" <> OA.short 'd' <> OA.metavar "FILENAME" <> OA.help "Destination filename. Use an empty document if not specified.")))
+                     <*> withDefaultValue "" (OA.optional (OA.strOption ( OA.long "output" <> OA.short 'o' <> OA.metavar "FILENAME" <> OA.help "Output filename")))
+                     <*> OA.switch (OA.long "check-ambiguity" <> OA.help "Check the format ambiguity when printing")
+                     <*> withDefaultValue "" (OA.optional $ OA.argument OA.str (OA.metavar "FILE"))
 
-optsWithInfo = OA.info (OA.helper <*> optsParser) (OA.fullDesc <> OA.progDesc "Supported formats: markdown, html" <> OA.header "bipandoc - a bidirectional document converter")
-
+optsWithInfo = OA.info (OA.helper <*> optsParser) (OA.fullDesc <> OA.progDesc "Supported formats: markdown, html\n" <> OA.header "bipandoc - a bidirectional document converter")
 
 
 get :: Options -> String -> Maybe AbsDocument
@@ -61,7 +64,17 @@ put opt src view = case dstFormat opt of
 
     where put' (bx, parser, printer) = do
             src' <- BiGUL.put bx (parser src) view
-            return $ printer src'
+            let result = printer src'
+            if not (checkAmbiguity opt)
+               then return result
+               else if BiGUL.get bx (parser result) /= Just view
+                       then do 
+                           traceM "Format ambiguity detected! get(parser(result)) /= original_ast"
+                           -- traceM $ "the original view is:" ++ (ppShow view)
+                           -- traceM "vs"
+                           -- traceM $ "get(parser(output)) is:" ++ (ppShow $ BiGUL.get bx (parser result))
+                           return result
+                       else return result
 
 putTrace :: Options -> String -> AbsDocument -> BiGULTrace
 putTrace opt src view = case dstFormat opt of 
@@ -77,12 +90,10 @@ putTrace opt src view = case dstFormat opt of
 defaultDocument :: String -> String
 defaultDocument format = 
     case format of
-        "html" -> HTMLParser.defaultHTML
-        "html-body" -> HTMLParser.defaultHTML
+        "html" -> HTMLParser.emptyHTMLStr
+        "html-body" -> HTMLParser.emptyHTMLStr
         "markdown" -> MarkdownParser.defaultMarkdown
         _ -> ""
-
-testOpts = Options "html" "markdown" "1.html" "" "abc.md"
 
 main = do
     opts <- OA.execParser optsWithInfo
@@ -101,7 +112,7 @@ main = do
        then do
            putStrLn $ "Failed to get view from " ++ src
            print $ getTrace opts src
-           return ()
+           exitFailure
        else do
            let (Just view) = viewM
 
@@ -115,9 +126,9 @@ main = do
            let targetM = put opts dst view
            if isNothing targetM 
               then do
-                  putStrLn $ "Failed to put-back into target, see trace:"
+                  putStrLn "Failed to put-back into target, see trace:"
                   print $ putTrace opts dst view
-                  return ()
+                  exitFailure
               else do
                   let (Just target) = targetM
                   outH <- if outputFile opts == "" 
@@ -125,3 +136,4 @@ main = do
                              else openFile (outputFile opts) WriteMode
                   hPutStr outH target
                   hClose outH
+                  exitSuccess
