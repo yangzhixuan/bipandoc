@@ -29,7 +29,7 @@ putStrInGreen s = do
     putStr s
     setSGR [Reset]
 
-testBX filename = do
+testDocxReader filename = do
 
 
 

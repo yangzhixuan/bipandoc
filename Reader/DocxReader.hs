@@ -301,21 +301,26 @@ refineList mapTuple cst@(block:next@(bn:bs)) now_list =
             then let rest_ans = refineList mapTuple next (getInitList bn mapTuple)
                      restLines = snd rest_ans
             in if restLines == []
-                 then refineList mapTuple restLines (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans))
+                 --then refineList mapTuple restLines (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans))
+                 then refineList mapTuple restLines (addItemByBlock now_list block ([block]++(fst rest_ans)))
                else
                  let restFirst = head restLines in
                  case restFirst of
                    ListItem rLevel rNumId rContent ->
                      if level > rLevel
-                       then (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans), restLines)
+                       --then (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans), restLines)
+                       then (addItemByBlock now_list block ([block]++(fst rest_ans)), restLines)
                      else if rLevel == level && rNumId == numId
-                       then refineList mapTuple restLines (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans))
+                       --then refineList mapTuple restLines (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans))
+                       then refineList mapTuple restLines (addItemByBlock now_list block ([block]++(fst rest_ans)))
                      else if rLevel == level && not (rNumId == numId)
                        then let rest_ans' = refineList mapTuple restLines (getInitList restFirst mapTuple) in
-                         (((addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans)) ++ fst rest_ans'), snd rest_ans')
+                         --(((addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans)) ++ fst rest_ans'), snd rest_ans')
+                         (((addItemByBlock now_list block ([block]++(fst rest_ans))) ++ fst rest_ans'), snd rest_ans')
                      else error "The list structure is wrong"
 
-                   _ -> refineList mapTuple restLines (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans))
+                   --_ -> refineList mapTuple restLines (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans))
+                   _ -> refineList mapTuple restLines (addItemByBlock now_list block ([block]++(fst rest_ans)))
 
 
           else if level > bLevel
@@ -366,6 +371,7 @@ transferListItem (item:is) =
 transferBlock :: Block -> [AbsBlock]
 transferBlock block =
   case block of
+    ListItem _ _ inlines -> [AbsPara (transferInline inlines)]
     Para inlines -> [AbsPara (transferInline inlines)]
     Table _ -> []
     OrderedList items -> [AbsOrderedList (transferListItem items)]
