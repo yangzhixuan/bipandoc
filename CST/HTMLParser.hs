@@ -1,7 +1,5 @@
 {-# Language RecordWildCards, TemplateHaskell, TypeFamilies #-}
 
--- todo: keep spaces and linebreaks in <pre>. treat them as what they are
-
 module CST.HTMLParser (parseHTML, parseHTMLBody, prtDocument, prtDocumentBody, isSupportedNode, emptyHTMLCST, emptyHTMLStr, emptyHTMLBodyStr) where
 
 import CST.HTMLParserDataType
@@ -11,24 +9,16 @@ import Data.List (groupBy)
 import Data.Maybe (fromJust, fromMaybe)
 import Control.Monad (liftM, replicateM)
 import qualified Data.List.NonEmpty as DLN ( NonEmpty((:|)), fromList )
-import Data.Map as Map (fromList, Map, lookup, union, singleton, keys, findWithDefault)
+import Data.Map as Map (fromList, Map, lookup)
 import Text.Show.Pretty (ppShow)
 
 import Control.Monad.Writer
-import qualified Data.Set as Set (fromList, singleton, empty)
 
 import Debug.Trace
 
 type PU = Parsec Dec String
 
-  --   CHTML           -- <html>
-  -- | CHead           -- <html>
-  -- | CBody           -- <html>
-  -- | Space        -- do not know what it is. maybe &npsp
   -- | SmallCaps    -- no this
-  -- | CEmDash       -- &mdash
-  -- | CEnDash       -- &ndash
-  -- | CImg
   -- | endnote, footnote... -- no these
 
 
@@ -416,9 +406,11 @@ divideAtLineBreak (GTreeLeaf (CTagText InlineText (TM spaces))) = divideAtLineBr
 
 
 isSubtreeInline :: GTree CTag -> Bool
-isSubtreeInline (GTreeNode (CTag _ (Left tn) _ _) _) = tn `elem` [CPara, CHead 1, CHead 2, CHead 3, CHead 4, CHead 5, CHead 6, CCode]
+isSubtreeInline (GTreeNode (CTag _ (Left tn) _ _) _) = tn `elem` [CPara, CHead 1, CHead 2, CHead 3, CHead 4, CHead 5, CHead 6, CPre, CCode]
 isSubtreeInline _ = False
 
+-- in order to be compatible with Markdown, temporarily set all contents excluding <code>
+-- within <pre> to the tag to be filtered out later
 
 ------------------------
 parseHTML :: String -> HTMLDoc

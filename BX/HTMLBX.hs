@@ -40,7 +40,12 @@ refineBX1 =
         ]
 
 filterGTreeNode p =
-  Case [ $(normalSV [p| GTreeNode{} |] [p| GTreeNode{} |] [p| GTreeNode{} |])
+  Case [ -- special case: in order to be compatible with Markdown, temporarily filter out all the contents within <pre> excluding <code>
+         $(normalSV [p| GTreeNode{} |] [p| GTreeNode (CTag _ (Left CPre) _ _) _ |] [p| GTreeNode (CTag _ (Left CPre) _ _) _ |])
+         ==> $(update [p| GTreeNode node subs |] [p| GTreeNode node subs |]
+                      [d| node = Replace; subs = filterLens leaveCodeOnly `Compose` mapLens (filterGTreeNode p) id |])
+
+       , $(normalSV [p| GTreeNode{} |] [p| GTreeNode{} |] [p| GTreeNode{} |])
          ==> $(update [p| GTreeNode node subs |] [p| GTreeNode node subs |]
                       [d| node = Replace; subs = filterLens p `Compose` mapLens (filterGTreeNode p) id |])
 
@@ -48,21 +53,15 @@ filterGTreeNode p =
          ==> $(update [p| GTreeLeaf node |] [p| GTreeLeaf node |]
                       [d| node = Replace; |])
 
-      --  , $(normalSV [p| _ |] [p| GTreeLeaf (CTagText InlineText _) |]
-      --               [p| GTreeLeaf (CTagText InlineText _) |] )
-      --      ==> Replace
-       --
-      --  , $(normalSV [p| _ |] [p| GTreeLeaf (CCodeContent _) [] |]
-      --               [p| GTreeLeaf (CCodeContent _) |] )
-      --    ==> Replace
-
        , $(adaptiveSV [p| GTreeLeaf{} |] [p| GTreeNode{} |])
          ==> (\_ (GTreeNode node subs) -> GTreeNode node [] )
 
        , $(adaptiveSV [p| GTreeNode{} |] [p| GTreeLeaf{} |])
          ==> (\_ v -> v)
        ]
-
+  where leaveCodeOnly :: GTree CTag -> Bool
+        leaveCodeOnly (GTreeNode (CTag _ (Left CCode) _ _) _) = True
+        leaveCodeOnly _ = False
 
 -- test this idea: skip dividing blocks such as "div", "span" ...
 blockListBX :: BiGUL [GTree CTag] [AbsBlock]
