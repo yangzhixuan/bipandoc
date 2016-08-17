@@ -31,8 +31,6 @@ putStrInGreen s = do
 
 testDocxReader filename = do
 
-
-
     cst <- getDocxCST filename
     putStrInGreen "Parsed DOCX: \n"
     putPretty cst
@@ -43,13 +41,14 @@ testDocxReader filename = do
     putPretty view
     putStrLn ""
     --
-    
+
     let (Just htmlCST) = put htmlBX emptyHTMLCST view
     putStrInGreen "Put to empty HTML, got: \n"
     putPretty htmlCST
     putStrLn ""
 
     putStrLn (prtDocument htmlCST)
+    writeFile "docxToHtml.html" (prtDocument htmlCST)
 
     --let htmlCST' = fmap (parseHTML . prtDocument) htmlCST
     --putStrInGreen "Print and re-parse htmlCST: \n"

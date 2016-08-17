@@ -343,6 +343,43 @@ refine cst@(block:bs) mapTuple =
     _ -> [block] ++ refine bs mapTuple
 
 
+--refine str to make it like Markdown
+
+findNextNonStr :: [AbsInline] -> String -> (String, [AbsInline])
+findNextNonStr [] str = (str, [])
+findNextNonStr (inline:is) str =
+  case inline of
+    AbsStr text -> findNextNonStr is (str ++ text)
+    _ -> (str, (inline:is))
+
+
+getRefinedStr :: String -> String -> String -> [AbsInline]
+getRefinedStr [] now_str lastChar = [AbsStr now_str]
+getRefinedStr (c:cs) now_str lastChar =
+  if not (c == ' ') then
+    if not (lastChar == " ") then getRefinedStr cs (now_str ++ [c]) [c]
+    else [AbsStr " "] ++ getRefinedStr cs [c] [c]
+  else
+    if not (lastChar == " ") then
+      if not (now_str == "") then [AbsStr now_str] ++ getRefinedStr cs [c] [c]
+      else getRefinedStr cs [c] [c]
+    else getRefinedStr cs [c] [c]
+
+
+refineStr :: [AbsInline] -> [AbsInline]
+refineStr [] = []
+refineStr (inline:is) =
+  case inline of
+    AbsLink texts target -> [AbsLink (refineStr texts) target] ++ (refineStr is)
+    AbsEmph inlines -> [AbsEmph (refineStr inlines)] ++ (refineStr is)
+    AbsStrong inlines -> [AbsStrong (refineStr inlines)] ++ (refineStr is)
+    AbsStr str ->
+      let find_ans = findNextNonStr (inline:is) []
+          raw_str = fst find_ans
+          nextInlines = snd find_ans
+      in (getRefinedStr raw_str "" "") ++ (refineStr nextInlines)
+    _ -> [inline] ++ (refineStr is)
+
 
 -- transfer CST to AST
 
@@ -354,7 +391,7 @@ transferInline (inline:is) =
     Bold subInlines -> [AbsStrong (transferInline subInlines)] ++ (transferInline is)
     Emph subInlines -> [AbsEmph (transferInline subInlines)] ++ (transferInline is)
     Strike subInlines -> (transferInline subInlines) ++ (transferInline is)
-    Tab -> [AbsStr "    "] ++ (transferInline is)
+    Tab -> [AbsStr " "] ++ (transferInline is)
     Br -> [AbsHardbreak] ++ (transferInline is)
     Cr -> [AbsHardbreak] ++ (transferInline is)
     Link address texts -> [AbsLink (transferInline texts) address] ++ (transferInline is)
@@ -371,8 +408,8 @@ transferListItem (item:is) =
 transferBlock :: Block -> [AbsBlock]
 transferBlock block =
   case block of
-    ListItem _ _ inlines -> [AbsPara (transferInline inlines)]
-    Para inlines -> [AbsPara (transferInline inlines)]
+    ListItem _ _ inlines -> [AbsPara (refineStr $ transferInline inlines)]
+    Para inlines -> [AbsPara (refineStr $ transferInline inlines)]
     Table _ -> []
     OrderedList items -> [AbsOrderedList (transferListItem items)]
     UnorderedList items -> [AbsUnorderedList (transferListItem items)]
@@ -391,16 +428,31 @@ dealInput filePath xmlFile =
   in withArchive (Path filePath) (getEntry entrySelector)
 
 
-getDocxCST :: String -> IO DocxCST 
+getEntrySelector :: String -> String -> EntrySelector
+getEntrySelector filePath xmlFile =
+  let Just entrySelector = mkEntrySelector (Path xmlFile) :: Maybe EntrySelector
+  in entrySelector
+
+
+getDocxCST :: String -> IO DocxCST
 getDocxCST fileName = do
   --argList <- getArgs
   documentByteStr <- dealInput fileName "word/document.xml"
   relByteStr <- dealInput fileName "word/_rels/document.xml.rels"
-  numberingByteStr <- dealInput fileName "word/numbering.xml"
+  --numberingByteStr <- dealInput fileName "word/numbering.xml"
   relTrees <- runX $ readString [withValidate no] (toString relByteStr)
-  numberingTrees <- runX $ readString [withValidate no] (toString numberingByteStr)
+  --numberingTrees <- runX $ readString [withValidate no] (toString numberingByteStr)
   xmlTrees <- runX $ readString [withValidate no] (toString documentByteStr)
-  return $ refine (getCST xmlTrees (getRels relTrees)) (getListStyle numberingTrees)
+
+  flag <- withArchive (Path fileName) (doesEntryExist $ getEntrySelector fileName "word/numbering.xml")
+  if flag then do
+    numberingByteStr <- dealInput fileName "word/numbering.xml"
+    numberingTrees <- runX $ readString [withValidate no] (toString numberingByteStr)
+    return $ refine (getCST xmlTrees (getRels relTrees)) (getListStyle numberingTrees)
+  else
+    return $ getCST xmlTrees (getRels relTrees)
+
+  --return $ refine (getCST xmlTrees (getRels relTrees)) (getListStyle numberingTrees)
   --putStrLn . ppShow $ getListStyle numberingTrees
   --print numberingTrees
   --print (getCST xmlTrees (getRels relTrees))
