@@ -66,20 +66,7 @@ filterGTreeNode p =
 
 -- test this idea: skip dividing blocks such as "div", "span" ...
 blockListBX :: BiGUL [GTree CTag] [AbsBlock]
-blockListBX =
-  Case  [ $(normalSV [p| [] |] [p| [] |] [p| [] |] ) $ Skip (const [])
-
-        -- span not handled yet
-        -- normal inductive cases
-        , $(normalSV [p| _:_ |] [p| _:_ |] [p| _:_ |] ) $
-            $(update [p| c:cbs |] [p| c:cbs |] [d| c = blockBX; cbs = blockListBX |])
-
-          -- delete extra source elements
-        , $(adaptiveSV [p| _:_ |] [p| [] |] ) (\_ _ -> [])
-
-          -- add more source elements
-        , $(adaptiveSV [p| [] |] [p| _:_ |] ) (\_ v -> [createBlock (head v)])
-        ]
+blockListBX = minEditDistLens blockBX createBlock
 
 
 -- we follow the idea similar to lensMap: the strategy is matching by position.
@@ -91,25 +78,25 @@ blockBX =
          $(normalSV [p| GTreeNode (CTag Block (Left CPara) _ NormalClose) _ |] [p| AbsPara _ |]
                     [p| GTreeNode (CTag Block (Left CPara) _ NormalClose) _ |])
          ==> $(update [p| GTreeNode (CTag Block (Left CPara) _ NormalClose) xs |] [p| AbsPara xs |]
-                      [d| xs = (mapLens inlineBX createInline) `Compose` lensConcatEntityStr |])
+                      [d| xs = (minEditDistLens inlineBX createInline) `Compose` lensConcatEntityStr |])
 
          -- Case: Heading
        , $(normalSV [p| GTreeNode (CTag Block (Left (CHead _ )) _ NormalClose) _ |] [p| AbsHeading _ _ |]
                     [p| GTreeNode (CTag Block (Left (CHead _ )) _ NormalClose) _ |])
          ==> $(update [p| GTreeNode (CTag Block (Left (CHead level )) _ NormalClose) contents |] [p| AbsHeading level contents |]
-                      [d| level = Replace; contents = mapLens inlineBX createInline `Compose` lensConcatEntityStr |])
+                      [d| level = Replace; contents = minEditDistLens inlineBX createInline `Compose` lensConcatEntityStr |])
 
          -- Case: AbsUnorderedList
        , $(normalSV [p| GTreeNode (CTag Block (Left CUnorderedList) _ NormalClose) _ |] [p| AbsUnorderedList _ |]
                     [p| GTreeNode (CTag Block (Left CUnorderedList) _ NormalClose) _ |])
          ==> $(update [p| GTreeNode (CTag Block (Left CUnorderedList) _ NormalClose) items |] [p| AbsUnorderedList items |]
-                      [d| items = mapLens unorderedListItemBX createListItem |])
+                      [d| items = minEditDistLens unorderedListItemBX createListItem |])
 
          -- Case: AbsOrderedList
        , $(normalSV [p| GTreeNode (CTag Block (Left COrderedList) _ NormalClose) _ |] [p| AbsOrderedList _ |]
                     [p| GTreeNode (CTag Block (Left COrderedList) _ NormalClose) _ |])
          ==> $(update [p| GTreeNode (CTag Block (Left COrderedList) _ NormalClose) items |] [p| AbsOrderedList items |]
-                      [d| items = mapLens orderedListItemBX createListItem |])
+                      [d| items = minEditDistLens orderedListItemBX createListItem |])
 
          -- Case: AbsBlockQuote
        , $(normalSV [p| GTreeNode (CTag Block (Left CBlockQuote) _ NormalClose) _ |] [p| AbsBlockQuote _ |]
@@ -175,13 +162,13 @@ inlineBX =
          $(normalSV [p| GTreeNode (CTag Inline (Left CEmph) _ NormalClose) _ |] [p| AbsEmph _ |]
                     [p| GTreeNode (CTag Inline (Left CEmph) _ NormalClose) _ |])
          ==> $(update [p| GTreeNode (CTag Inline (Left CEmph) _ NormalClose) subs |] [p| AbsEmph subs |]
-                      [d| subs = mapLens inlineBX createInline `Compose` lensConcatEntityStr |])
+                      [d| subs = minEditDistLens inlineBX createInline `Compose` lensConcatEntityStr |])
 
          -- Case: Strong
        , $(normalSV [p| GTreeNode (CTag Inline (Left CStrong) _ NormalClose) _ |] [p| AbsStrong _ |]
                     [p| GTreeNode (CTag Inline (Left CStrong) _ NormalClose) _ |])
          ==> $(update [p| GTreeNode (CTag Inline (Left CStrong) _ NormalClose) subs |] [p| AbsStrong subs |]
-                      [d| subs = mapLens inlineBX createInline `Compose` lensConcatEntityStr |])
+                      [d| subs = minEditDistLens inlineBX createInline `Compose` lensConcatEntityStr |])
 
          -- Case: Softbreak in markdown.
        , $(normalSV [p| GTreeLeaf (CTagText InlineText (TM "\n")) |] [p| AbsSoftbreak |]
@@ -250,7 +237,7 @@ inlineBX =
        , $(normalSV [p| GTreeNode (CTag Inline (Left CLink) _ NormalClose) _ |] [p| AbsLink _ _ |]
                     [p| GTreeNode (CTag Inline (Left CLink) _ NormalClose) _ |])
          ==> $(update [p| GTreeNode (CTag Inline (Left CLink) dest NormalClose) text |] [p| AbsLink text dest |]
-                      [d| text = mapLens inlineBX createInline `Compose` lensConcatEntityStr ; dest = replaceHref |])
+                      [d| text = minEditDistLens inlineBX createInline `Compose` lensConcatEntityStr ; dest = replaceHref |])
 
          -- Case: AbsImage
        , $(normalSV [p| GTreeLeaf (CTag Inline (Left CImg) _ _) |] [p| AbsImage _ _ |]
