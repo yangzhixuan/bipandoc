@@ -92,6 +92,7 @@ infixr 5 <++>
     sb <- b
     return (sa ++ sb)
 
+
 concatMapM :: (Traversable t, Monad m) => (a -> m [b]) -> t a -> m [b]
 concatMapM f l = fmap concat (mapM f l)
 
@@ -107,28 +108,31 @@ indentPrinter ind = do
                return (case ind of DefaultIndent -> ""; Indent s -> s)
        else indentPrinter' ind
 
-blankIndentPrinter :: Indent -> State PrinterStatus String
-blankIndentPrinter ind = do
+blankIndentPrinter :: Indent -> State PrinterStatus String -> State PrinterStatus String
+blankIndentPrinter ind blkStr = do
     st <- get
-    let newBlankLine = if _skipIndentOnce st || ind /= DefaultIndent || not (notFirstLine st)
-                          then "" else defaultIndent st ++ "\n"
+    let newBlankLinePre = if _skipIndentOnce st || ind /= DefaultIndent || not (notFirstLine st)
+                             then "" else defaultIndent st ++ "\n"
+    let newBlankLinePost = if ind /= DefaultIndent
+                              then "" else defaultIndent st ++ "\n"
     -- notFirstLine is used to avoid generating a blankline at the start of a file
     modify (\st -> st{notFirstLine = True})
     s <- indentPrinter ind
-    return $ newBlankLine ++ s
+
+    return (newBlankLinePre ++ s) <++> blkStr <++> return newBlankLinePost
 
 blockPrinter :: Block -> State PrinterStatus String
 blockPrinter blk = case blk of
     (BlankLine ind s) -> indentPrinter ind <++> return s
 
-    (Para ind inls) -> blankIndentPrinter ind <++> concatMapM inlinePrinter inls <++> return "\n"
+    (Para ind inls) -> blankIndentPrinter ind $ concatMapM inlinePrinter inls <++> return "\n"
 
     (ATXHeading ind atxs sps heading atx2 sps2) -> 
-        blankIndentPrinter ind <++> return atxs <++> return sps <++> 
+        blankIndentPrinter ind $ return atxs <++> return sps <++> 
         concatMapM inlinePrinter heading <++> return atx2 <++> return sps2
 
     (SetextHeading ind heading sps2 ind2 unls sps) -> 
-        blankIndentPrinter ind <++> concatMapM inlinePrinter heading <++> 
+        blankIndentPrinter ind $ concatMapM inlinePrinter heading <++> 
         return sps2 <++> indentPrinter ind2 <++> return unls <++> return sps
 
     (UnorderedList items) -> concatMapM listItemPrinter items
@@ -141,7 +145,7 @@ blockPrinter blk = case blk of
            return s
 
     (BlockQuote ind str bs) ->
-        blankIndentPrinter ind <++> return str <++>
+        blankIndentPrinter ind $ return str <++>
         do oldSt <- get
            put oldSt{ defaultIndent = defaultIndent oldSt ++ ">", _skipIndentOnce = True }
            s <- concatMapM blockPrinter bs
@@ -156,7 +160,7 @@ blockPrinter blk = case blk of
            return s
 
     (FencedCode i1 f1 s1 codes i2 f2 s2) ->
-        blankIndentPrinter i1 <++> return f1 <++> return s1 <++> 
+        blankIndentPrinter i1 $ return f1 <++> return s1 <++> 
         concatMapM codeLinePrinter codes <++> indentPrinter i2 <++> 
         return f2 <++> return s2
 
@@ -177,7 +181,7 @@ inlinePrinter inline = case inline of
 
 listItemPrinter :: ListItem -> State PrinterStatus String
 listItemPrinter (UnorderedListItem ind bullet sps2 items) =
-    blankIndentPrinter ind <++> return (bullet : sps2) <++> 
+    blankIndentPrinter ind $ return (bullet : sps2) <++> 
     do oldSt <- get
        put oldSt{defaultIndent = defaultIndent oldSt ++ " " ++ sps2, _skipIndentOnce = True}
        s <- concatMapM blockPrinter items
@@ -185,7 +189,7 @@ listItemPrinter (UnorderedListItem ind bullet sps2 items) =
        return s
 
 listItemPrinter (OrderedListItem ind number dot sps2 items) =
-    blankIndentPrinter ind <++> do
+    blankIndentPrinter ind $ do
         numStr <- itemNumberPrinter number 
         oldSt <- get
         put oldSt{ defaultIndent = defaultIndent oldSt ++ replicate (length numStr + 1) ' ' ++ sps2,
