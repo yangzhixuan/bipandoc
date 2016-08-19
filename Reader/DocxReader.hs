@@ -88,6 +88,7 @@ getLinkType ((NTree node sons):ns) =
                _ -> ""
 
 
+
 getInlineWr :: XmlTrees -> Map String String -> [Inline]
 getInlineWr [] relMap = []
 getInlineWr ((NTree node sons):ns) relMap =
