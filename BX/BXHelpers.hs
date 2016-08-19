@@ -1,5 +1,5 @@
-
 {-# Language TemplateHaskell, TypeFamilies #-}
+
 module BX.BXHelpers where
 
 import Generics.BiGUL
@@ -7,8 +7,13 @@ import Data.List
 import Generics.BiGUL.Interpreter
 import Generics.BiGUL.TH
 import Control.Arrow ((***))
-import Data.Maybe (isJust, catMaybes)
-
+import Data.Maybe
+import Data.Array.ST
+import Data.Array
+import Control.Monad.ST
+import Control.Monad
+import Debug.Trace
+import Text.Show.Pretty
 
 
 -- |
@@ -267,3 +272,59 @@ filterPut p s v =
           filterPut' [] v = v
           filterPut' (s:ss) (v:vs) = if not (p s) then s : (filterPut' ss (v:vs)) else (v : filterPut' ss vs)
 
+bx1 :: BiGUL (Int, String) Int
+bx1 = $(update [p| (x, _) |] [p| x |] [d| x = Replace |])
+
+minEditDistLens :: (Show s, Show v, Eq s, Eq v) => BiGUL s v -> (v -> s) -> BiGUL [s] [v]
+minEditDistLens bx create = Case
+    -- 'bx' tries to update from view to source by simply replacing elements in source and view one by one,
+    -- If it is not the most efficient way, we try to add elements or delete elements.
+    [ $(adaptive [| \ s v -> length s /= length v  || structureEdit bx create s v /= s |])
+      ==> structureEdit bx create
+    ,
+     $(normalSV [p| _ |] [p| _ |] [p| _ |])
+      ==> mapLens bx create
+    ]
+
+data Operation = OpModify | OpInsert | OpDelete | OpNothing deriving (Show, Eq, Ord)
+
+minEditDistDP :: (Eq a) => [a] -> [a] -> Array (Int, Int) (Int, Operation)
+minEditDistDP s v = runST $ do
+    let (lenS, lenV) = (length s, length v)
+    arrS <- newSTListArray (1, lenS) s
+    arrV <- newSTListArray (1, lenV) v
+    f <- newArray ((0,0), (lenS, lenV)) (-1, OpInsert) :: ST s (STArray s (Int, Int) (Int, Operation))
+    forM_ [0 .. lenV] (\i -> writeArray f (0, i) (i, OpInsert))
+    forM_ [0 .. lenS] (\i -> writeArray f (i, 0) (i, OpDelete))
+    writeArray f (0,0) (0, OpNothing)
+    forM_ (range ((1,1), (lenS, lenV))) (\(i, j) -> do
+        si <- readArray arrS i
+        sj <- readArray arrV j
+        if si == sj 
+           then readArray f (i-1, j-1) >>= \p -> writeArray f (i, j) (modifySnd OpNothing p)
+           else do
+               cModify <- readArray f (i-1, j-1)
+               cInsert <- readArray f (i, j-1)
+               cDelete <- readArray f (i-1, j)
+               writeArray f (i, j) ((\(x, y) -> (x+1, y)) (minimum [ modifySnd OpModify cModify,
+                                                                     modifySnd OpInsert cInsert,
+                                                                     modifySnd OpDelete cDelete ]) ))
+    freeze f
+    where newSTListArray :: (Ix i) => (i,i) -> [a] -> ST s (STArray s i a)
+          newSTListArray = newListArray
+          modifySnd x (a, b) = (a, x)
+
+structureEdit :: (Show s, Show v, Eq s, Eq v) => BiGUL s v -> (v -> s) -> [s] -> [v] -> [s]
+structureEdit bx create s v = let sv = get (mapLens bx create) s
+                              in if sv == Nothing 
+                                    then s
+                                    else let f = minEditDistDP (fromJust sv) v
+                                             reconstruct 0 0 [] = []
+                                             reconstruct i j s = case snd (f ! (i,j)) of
+                                                 OpNothing -> head s : reconstruct (i-1) (j-1) (tail s)
+                                                 OpModify -> head s : reconstruct (i-1) (j-1) (tail s)
+                                                 OpInsert -> create (head v) : reconstruct i (j-1) s
+                                                 -- FIXME: the following maybe more safe
+                                                 -- OpInsert -> fromJust (put bx (create v) v) : reconstruct i (j-1) s
+                                                 OpDelete -> reconstruct (i-1) j (tail s)
+                                         in reverse $ reconstruct (length s) (length v) (reverse s)

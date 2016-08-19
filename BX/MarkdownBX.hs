@@ -39,7 +39,7 @@ checkBX =
 
 
 blockListBX :: BiGUL [Block] [AbsBlock]
-blockListBX = (filterLens nonBlankLines) `Compose` (mapLens blockBX createBlock) -- `Compose` checkBX
+blockListBX = (filterLens nonBlankLines) `Compose` (minEditDistLens blockBX createBlock) -- `Compose` checkBX
     where nonBlankLines (BlankLine _ _) = False
           nonBlankLines _ = True
           createBlock = const $ Para DefaultIndent []
@@ -68,7 +68,7 @@ blockBX =
            -- Case: AbsUnorderedList
          , $(normalSV [p| UnorderedList _ |] [p| AbsUnorderedList _ |] [p| UnorderedList _ |])
            ==> $(update [p| UnorderedList items |] [p| AbsUnorderedList items |]
-                        [d| items = mapLens unorderedListItemBX createListItem |])
+                        [d| items = minEditDistLens unorderedListItemBX createListItem |])
 
          , $(adaptiveSV [p| _ |] [p| AbsUnorderedList _ |])
            ==> \s v -> UnorderedList []
@@ -76,7 +76,7 @@ blockBX =
            -- Case: AbsOrderedList
          , $(normalSV [p| OrderedList _ |] [p| AbsOrderedList _ |] [p| OrderedList _ |])
            ==> $(update [p| OrderedList items |] [p| AbsOrderedList items |]
-                        [d| items = mapLens orderedListItemBX createListItem |])
+                        [d| items = minEditDistLens orderedListItemBX createListItem |])
 
          , $(adaptiveSV [p| _ |] [p| AbsOrderedList _ |])
            ==> \s v -> OrderedList []
@@ -144,7 +144,7 @@ orderedListItemBX = $(update [p| OrderedListItem _ _ _ _ x |] [p| AbsOrderedList
                                [d| x = blockListBX |])
 
 inlineListBX :: BiGUL [Inline] [AbsInline]
-inlineListBX = (mapLens inlineBX createInline) `Compose` concatAbsStrLens
+inlineListBX = (minEditDistLens inlineBX createInline) `Compose` concatAbsStrLens
 
 -- For AbsStr, we use EscapedCharInline as default, so that AbsStr '*' will be created as EscapedCharInline
 createInline (AbsStr c) = if length c == 1 && head c `elem` "*-[]~`"
