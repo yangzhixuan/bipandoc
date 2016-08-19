@@ -50,6 +50,15 @@ testDocxReader filename = do
     putStrLn (prtDocument htmlCST)
     writeFile "docxToHtml.html" (prtDocument htmlCST)
 
+
+    let (Just markdownCST) = put markdownBX (MarkdownDoc []) view
+    putStrInGreen "Put to empty Markdown, got: \n"
+    putPretty markdownCST
+    putStrLn ""
+
+    putStrLn (printMarkdown markdownCST)
+    writeFile "docxToMarkdown.md" (printMarkdown markdownCST)
+
     --let htmlCST' = fmap (parseHTML . prtDocument) htmlCST
     --putStrInGreen "Print and re-parse htmlCST: \n"
     --putPretty htmlCST'

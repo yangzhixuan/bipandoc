@@ -87,21 +87,36 @@ getLinkType ((NTree node sons):ns) =
                               _ -> ""
                _ -> ""
 
+
+getInlineWr :: XmlTrees -> Map String String -> [Inline]
+getInlineWr [] relMap = []
+getInlineWr ((NTree node sons):ns) relMap =
+ case node of
+   XTag ((T.mkName "w:rPr" ==) -> True) tagContent ->
+     let content = getInlineContent ns
+     in  getInlinePr (sons, content)
+   XTag ((T.mkName "w:t" ==) -> True) tagContent ->
+     let content = getInlineContent sons
+     in getInlinePr ([], content)
+   XTag qname tagContent -> getInlineWr ns relMap
+
+
 getInline :: XmlTrees -> Map String String -> [Inline]
 getInline [] _ = []
 --getInline ((NTree node ((NTree node' sons'):ns')):ns) =
 getInline ((NTree node sons):ns) relMap =
   case node of
-    XTag ((T.mkName "w:r" ==) -> True) tagContent ->
-      case sons of((NTree node' sons'):ns') ->
-                    case node' of XTag ((T.mkName "w:rPr" ==) -> True) tagContent ->
-                                    let content = getInlineContent ns'
-                                    in  getInlinePr (sons', content) ++ getInline ns relMap
-                                  XTag ((T.mkName "w:t" ==) -> True) tagContent ->
-                                      let content = getInlineContent sons
-                                      in getInlinePr ([], content) ++ getInline ns relMap
-                                  XTag qname tagContent -> getInline ns relMap
-                  [] -> getInline ns relMap
+    --XTag ((T.mkName "w:r" ==) -> True) tagContent ->
+    --  case sons of((NTree node' sons'):ns') ->
+    --                case node' of XTag ((T.mkName "w:rPr" ==) -> True) tagContent ->
+    --                                let content = getInlineContent ns'
+    --                                in  getInlinePr (sons', content) ++ getInline ns relMap
+    --                              XTag ((T.mkName "w:t" ==) -> True) tagContent ->
+    --                                  let content = getInlineContent sons
+    --                                  in getInlinePr ([], content) ++ getInline ns relMap
+    --                              XTag qname tagContent -> getInline ns relMap
+    --              [] -> getInline ns relMap
+    XTag ((T.mkName "w:r" ==) -> True) tagContent -> (getInlineWr sons relMap) ++ getInline ns relMap
     XTag ((T.mkName "w:hyperlink" ==) -> True) tagContent ->
       let linkType = getLinkType tagContent in
       if linkType == ""
