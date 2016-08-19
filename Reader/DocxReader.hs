@@ -113,7 +113,7 @@ getInline ((NTree node sons):ns) relMap =
     --                                in  getInlinePr (sons', content) ++ getInline ns relMap
     --                              XTag ((T.mkName "w:t" ==) -> True) tagContent ->
     --                                  let content = getInlineContent sons
-    --                                  in getInlinePr ([], content) ++ getInline ns relMap
+    --                                  in getInlinePr ([], contezt) ++ getInline ns relMap
     --                              XTag qname tagContent -> getInline ns relMap
     --              [] -> getInline ns relMap
     XTag ((T.mkName "w:r" ==) -> True) tagContent -> (getInlineWr sons relMap) ++ getInline ns relMap
