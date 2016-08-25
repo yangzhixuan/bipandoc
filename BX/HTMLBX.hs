@@ -10,7 +10,7 @@ import Generics.BiGUL.Interpreter
 import Abstract
 import BX.BXHelpers
 
-import CST.HTMLParser
+import CST.HTMLParser (isSupportedNode)
 import CST.HTMLParserDataType
 import Text.Megaparsec hiding (State)
 import qualified System.IO.Strict as IOS
@@ -22,18 +22,18 @@ import Debug.Trace
 
 htmlBX :: BiGUL HTMLDoc AbsDocument
 htmlBX = $(update [p| HTMLDoc _ _ _ html _ |] [p| html |]
-                  [d| html = filterGTreeNode isSupportedNode `Compose` blockListHTML |])
+                  [d| html = filterGTreeNode isSupportedNode `Compose` syncHTMLChildren |])
 
-
-blockListHTML :: BiGUL HTML AbsDocument
-blockListHTML =
+-- find and synchronise subtrees of <body> with AST
+syncHTMLChildren :: BiGUL HTML AbsDocument
+syncHTMLChildren =
   Case  [ $(normalSV [p| GTreeNode (CTag Block (Right "html") _ NormalClose) _ |] [p| AbsDocument _ |]
                      [p| GTreeNode (CTag Block (Right "html") _ NormalClose) _ |] ) $
-            $(update [p| GTreeNode _ subs  |] [p| AbsDocument subs |] [d| subs = refineBX1 |])
+            $(update [p| GTreeNode _ subs  |] [p| AbsDocument subs |] [d| subs = syncBodyChildren |])
         ]
 
-refineBX1 :: BiGUL [GTree CTag] [AbsBlock]
-refineBX1 =
+syncBodyChildren :: BiGUL [GTree CTag] [AbsBlock]
+syncBodyChildren =
   Case  [ $(normalSV [p| [GTreeNode (CTag Block (Right "body") _ NormalClose) _] |] [p| _ |]
                      [p| [GTreeNode (CTag Block (Right "body") _ NormalClose) _] |]) $
             $(update [p| [body] |] [p| body |] [d| body = lensFlattenDiv `Compose` blockListBX |])
@@ -298,7 +298,7 @@ createInline v = case v of
   AbsLink _ _  -> GTreeNode (CTag Inline (Left CLink) [] NormalClose) []
   AbsImage _ _ -> GTreeLeaf (CTag Inline (Left CImg) [] NoClose)
 
-
+-- replace the "alt" and "src" attribute of an <img> element.
 replaceAltAndDest :: BiGUL [Either Spaces Attribute] (String, String)
 replaceAltAndDest =
   emb (foldr getF ("",""))
@@ -314,7 +314,7 @@ replaceAltAndDest =
             Right (Attribute "alt" eq _) -> Right (Attribute "alt" eq (addQuotes "" alt)) : xs
             Right _ -> x : xs
 
--- search for href attribute. and replace it with the view
+-- search for "href" attribute. and replace it with the view
 replaceHref :: BiGUL [Either Spaces Attribute] String
 replaceHref =
   Case  [ $(normalSV [p| Left _ : _ |] [p| _ |] [p| Left _ : _ |]) $
@@ -332,7 +332,7 @@ replaceHref =
 replaceSourceInQuote :: BiGUL String String
 replaceSourceInQuote = emb dropQuotes addQuotes
 
--- the input string should be wrapped in quotes or doublequotes. drop the quotes
+-- The input string should be wrapped in quotes or doublequotes. The function drop the quotes of that string
 dropQuotes :: String -> String
 dropQuotes ('\'':xs)  = take (length xs - 1) xs
 dropQuotes ('"': xs)  = take (length xs - 1) xs
@@ -348,7 +348,9 @@ addQuotes s v = case s of
   _       -> "\"" ++ v ++ "\""  -- default case.
 
 
-
+-- get direction: traverse the tree, ignore all the container element (such as <div>), and collect only leaves of the container element.
+-- put direction: once we find a container element, count the number of its children (suppose to be m),
+-- then put the first m elements from the view list into the container. (possibly recursively)
 lensFlattenDiv :: BiGUL (GTree CTag) [GTree CTag]
 lensFlattenDiv = emb flattenDivGet flattenDivPut
 
@@ -392,6 +394,8 @@ flattenDivPut_ node = case node of
   _ -> error "error raised in flattenDivPut_. The given source is not a block element."
 
 
+-- count the number of children within a block element
+-- <li> blocks are not counted
 countBlockElement :: GTree CTag -> Int
 countBlockElement (GTreeNode (CTag Block (Left CPara) _ _) _) = 1
 countBlockElement (GTreeNode (CTag Block (Left (CHead _)) _ _) _) = 1
@@ -401,10 +405,13 @@ countBlockElement (GTreeNode (CTag Block (Left CUnorderedList) _ _) lis) = 1
 countBlockElement (GTreeNode (CTag Block (Left COrderedList) _ _) lis) = 1
 countBlockElement (GTreeNode (CTag Block (Left CDiv) _ _) subtags) = sum $ map countBlockElement subtags
 countBlockElement (GTreeNode (CTag Block (Right "body") attrs NormalClose) subtags) = sum $ map countBlockElement subtags
--- count <li> blocks are not counted
 
 
-
+-- adjacent non-spacing elements in AST are restricted to be merged into one.
+-- eg: [AbsStr "abc", AbsStr "&", AbsStr " "] is invalid. It should be transfered to [AbsStr "abc&", AbsStr " "]
+-- the CST parser parses Entities into standalone constructors for the sake of disambiguation.
+-- eg: "&lt;" and "&#60;" both stand for "<" and are represented by EntityLT1 and EntityLT2 in CST to distinguish them.
+-- They are converted to "<" in AST and further merged with other adjacent AbsStr element.
 lensConcatEntityStr :: BiGUL [AbsInline] [AbsInline]
 lensConcatEntityStr = emb concatEntityStr divideEntityStr
 
@@ -415,7 +422,7 @@ concatEntityStr (AbsStr x : AbsStr y : strs)
 concatEntityStr (x : y : strs) = x : concatEntityStr (y:strs)
 concatEntityStr strs = strs
 
-
+-- in put direction, name entities should be first separated from AbsStr. (break the AbsStr at entities)
 divideEntityStr :: [AbsInline] -> [AbsInline] -> [AbsInline]
 divideEntityStr _ viewStr = concatMap refine viewStr
   where refine :: AbsInline -> [AbsInline]

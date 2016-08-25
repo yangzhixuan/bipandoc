@@ -24,6 +24,7 @@ testArgs = stdArgs {maxSuccess=20}
 cstPrintParse :: IO ()
 cstPrintParse = quickCheckWith testArgs prop_CSTPrintParse
 
+-- the test tends to fail due to the ambiguity issue of Markdown.
 html_md_html_round :: IO ()
 html_md_html_round = quickCheckWith testArgs prop_HTML_MD_HTML_round
 
@@ -153,7 +154,7 @@ genAttributeWithSpace = do
           return $ Attribute name "=" val
 
 genInline' :: Int -> Gen (GTree CTag)
-genInline' 0 = return $ GTreeLeaf (CTagText InlineText (TR "this is not a space? "))
+genInline' 0 = return $ GTreeLeaf (CTagText InlineText (TR "some inline text"))
 genInline' n | n > 0 =
   frequency [(6, genInlineText)
             ,(1, genComments)
@@ -168,10 +169,16 @@ genInlineText :: Gen (GTree CTag)
 genInlineText = do {txt <- strWithoutSpace; return $ GTreeLeaf (CTagText InlineText (TR txt))}
 
 genSTRONG' :: Int -> Gen (GTree CTag)
-genSTRONG' n = do {inlines <- resize 8 $ listOf1 (genInline' (n `div` 4)); attrs <- listOf genAttributeWithSpace; return $ GTreeNode (CTag Inline (Left CStrong) (concat attrs) NormalClose) inlines}
+genSTRONG' n = do
+  inlines <- resize 8 $ listOf1 (genInline' (n `div` 4))
+  attrs <- listOf genAttributeWithSpace
+  return $ GTreeNode (CTag Inline (Left CStrong) (concat attrs) NormalClose) inlines
 
 genEMPH' :: Int -> Gen (GTree CTag)
-genEMPH' n = do {inlines <- resize 8 $ listOf1 (genInline' (n `div` 4)); attrs <- listOf genAttributeWithSpace; return $ GTreeNode (CTag Inline (Left CEmph) (concat attrs) NormalClose) inlines}
+genEMPH' n = do
+  inlines <- resize 8 $ listOf1 (genInline' (n `div` 4))
+  attrs <- listOf genAttributeWithSpace
+  return $ GTreeNode (CTag Inline (Left CEmph) (concat attrs) NormalClose) inlines
 
 genIMG :: Gen (GTree CTag)
 genIMG = do

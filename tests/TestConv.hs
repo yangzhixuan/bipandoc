@@ -64,7 +64,7 @@ testGetPut1 = do
   putStrLn ""
   putStrLn (prtDocument htmlCST')
   putStrLn ""
-  putStrLn "is the newly generated html document equl to the origin one?:\n==================="
+  putStrLn "is the newly generated html document equal to the origin one?:\n==================="
   putStrLn (ppShow (prtDocument htmlCST' == i))
 
 

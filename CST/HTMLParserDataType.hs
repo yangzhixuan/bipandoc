@@ -27,6 +27,8 @@ data CTag =
   | CDefaultTag
   deriving (Show, Eq)
 
+-- NormalClose: <abc> ... </abc>. SelfClose: <abc />. NoClose: <abc>
+-- NotDecidedxxxMark is used in parsing and later set to other tags.
 data CloseMark = NormalClose | SelfClose | NoClose | NotDecidedCloseMark deriving (Show, Eq)
 data TagMark   = Block | Inline | NotDecidedTagMark      deriving (Show, Eq)
 data TextMark  = InlineText | OtherText | NotDecidedTextMark deriving (Show, Eq) -- text in block elements such as <p>, <h1>, pass to AST. | text outside block elements which will not be passed to AST.

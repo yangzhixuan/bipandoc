@@ -1,4 +1,4 @@
-{-# Language RecordWildCards, TemplateHaskell, TypeFamilies #-}
+{-# Language RecordWildCards #-}
 
 module CST.HTMLParser (parseHTML, parseHTMLBody, prtDocument, prtDocumentBody, isSupportedNode, emptyHTMLCST, emptyHTMLStr, emptyHTMLBodyStr) where
 
@@ -18,12 +18,37 @@ import Debug.Trace
 
 type PU = Parsec Dec String
 
-  -- | SmallCaps    -- no this
-  -- | endnote, footnote... -- no these
+
+-- invoke this function to parse an HTML. The input is string to be parsed but not a file name.
+-- this function requires a valid HTML structure including tags: <doctype>, <html>, <head>, <body>.
+parseHTML :: String -> HTMLDoc
+parseHTML src = refineDoc $ either (error . parseErrorPretty) id (runParser parseDoc "" src)
+
+-- This function goes from the <body> tag and parse elements within it.
+-- However, this function does not require the structure of the document contains <doctype>, <html>, <head>, <body> tags
+parseHTMLBody :: String -> HTMLDoc
+parseHTMLBody src = refineDoc $ embHTMLBody (either (error . parseErrorPretty) id (runParser (many pAnyNode) "" src))
+
+-- create a valid HTML document by wrapping given tags into <html><head></head><body>...</body></html> structure.
+embHTMLBody :: [HTML] -> HTMLDoc
+embHTMLBody body = HTMLDoc ""  doctype " " html "\n"
+    where doctype = "<!DOCTYPE HTML>"
+          html    = (GTreeNode (CTag Block (Right "html") [] NormalClose)
+                        [GTreeLeaf (CTagText OtherText (TR "\n"))
+                        ,GTreeNode (CTag Block (Right "head") [] NormalClose) [GTreeLeaf (CTagText OtherText (TR "\n"))]
+                        ,GTreeLeaf (CTagText OtherText (TR "\n  "))
+                        ,GTreeNode (CTag Block (Right "body") [] NormalClose) body])
+
+emptyHTMLCST = embHTMLBody []
+
+emptyHTMLStr = "<!DOCTYPE HTML>\n<html>\n<head>\n</head>\n<body>\n</body>\n</html>"
+
+emptyHTMLBodyStr = ""
 
 
-supportedName :: Map String SupportedName
-supportedName = fromList [
+-- SmallCaps, endnote, footnote, etc currently are not supported
+supportedNameEnv :: Map String SupportedName
+supportedNameEnv = fromList [
    ("div", CDiv)
   ,("p", CPara)
   ,("code", CCode)
@@ -44,8 +69,9 @@ supportedName = fromList [
 isSupportedName :: Either SupportedName OtherName -> Bool
 isSupportedName (Right "body") = True -- an ad hoc trick for the filter lens on gtree.
 isSupportedName (Right _) = False
-isSupportedName (Left t) = maybe False (const True) (Map.lookup (prtSupportedName t) supportedName)
+isSupportedName (Left t) = maybe False (const True) (Map.lookup (prtSupportedName t) supportedNameEnv)
 
+-- Used by filter-lens. Mark the information that is not supported by AST.
 isSupportedNode :: GTree CTag -> Bool
 isSupportedNode (GTreeNode (CTag _ tag _ _) _) = isSupportedName tag
 isSupportedNode (GTreeLeaf (CTag _ tag _ _)) = isSupportedName tag
@@ -56,8 +82,22 @@ isSupportedNode (GTreeLeaf (CTagScript _ )) = False
 isSupportedNode (GTreeLeaf (CTagComment _)) = False
 isSupportedNode n = error $ "node not supported: " ++ show n
 
+-- the tag is an inline element.
+isInlineTag :: CTagName -> Bool
+isInlineTag (Left tag) = isInlineTag' tag
+isInlineTag (Right _)  = False
 
--------------html parser
+isInlineTag' :: SupportedName -> Bool
+isInlineTag' = flip elem [CEmph, CStrong, CStrike, CImg, CLink, CBr]
+
+-- void elements
+-- these elements has no closing tag. but we permit either <area ... >, <area ... />, or <area ...></area>
+isVoidElement :: String -> Bool
+isVoidElement s = s `elem` ["area", "base", "br", "col", "command"
+  ,"embed", "hr", "img", "input", "keygen", "link", "meta", "param", "source", "track", "wbr"]
+-----------------------------------------------------------------
+
+---------------html parser------------
 parseDoc :: Parsec Dec String HTMLDoc
 parseDoc = do
   space0 <- spaceChars
@@ -91,7 +131,7 @@ pHTMLNode = do
   <?> "error in parsing html tag"
 
 pAnyNode :: PU HTML
-pAnyNode = pAnyTag <|> pComment <|> pText <?> "parse tags fail. maybe some tags are not closed properly"
+pAnyNode = pAnyTag <|> pComment <|> pText <?> "parse tags fail. maybe some tags are not closed properly."
 
 pAnyTag :: PU HTML
 pAnyTag = do
@@ -102,7 +142,7 @@ pAnyTag = do
   tnStr   <- pTagName
   sOrA <- many (spacesOrAttr <?> "parse attribute error")
   cm <- (string ">" >> return NotDecidedCloseMark) <|> (string "/>" >> return SelfClose)
-  let tn = case Map.lookup tnStr supportedName of Nothing  -> Right tnStr; Just tn' -> Left tn'
+  let tn = case Map.lookup tnStr supportedNameEnv of Nothing  -> Right tnStr; Just tn' -> Left tn'
       tagMark = if isInlineTag tn then Inline else Block
   case tnStr of
     "script" -> do
@@ -114,8 +154,8 @@ pAnyTag = do
     "code"   -> do
       code <- someTill anyChar (string "</code>")
       return $ GTreeNode (CTag Inline (Left CCode) sOrA NormalClose) [GTreeLeaf (CCodeContent code)]
-      -- warning. comments inside the code block is not handled. delay the handle of it to the further transformation after parsing.
-      -- eg: <code> <!-- sdfdsf --> is not handled </code>
+      -- WARNING: comments inside the code block currently is not handled.
+      -- eg: <code> <!-- sdfdsf --> the comment is not handled </code>
     _       -> if isVoidElement tnStr
       then return $ if cm == NotDecidedCloseMark then GTreeLeaf (CTag tagMark tn sOrA NoClose)
                                                  else GTreeLeaf (CTag tagMark tn sOrA SelfClose)
@@ -127,15 +167,6 @@ pAnyTag = do
           then return $ GTreeNode (CTag tagMark tn sOrA NormalClose) inner
           else error $ "opening and closing tag mismatch. Opening: " ++ wrapTagO (prtCTagName tn) ++ " at " ++ showErrPos posO
                         ++ "\tClosing: " ++ wrapTagC tcStr ++ " at " ++ showErrPos posC
-
-
-isInlineTag :: CTagName -> Bool
-isInlineTag (Left tag) = isInlineTag' tag
-isInlineTag (Right _)  = False
-
-isInlineTag' :: SupportedName -> Bool
-isInlineTag' = flip elem [CEmph, CStrong, CStrike, CImg, CLink, CBr]
-
 
 pTagClose :: PU String
 pTagClose = do {string "</"; tn <- pTagName; char '>'; return $ tn} <?> "pTagClose"
@@ -192,8 +223,7 @@ pAttribute = do
       return $ "\"" ++ av ++ "\""
 
 spaceChars :: PU String
-spaceChars = many spaceChar <?> "spaceChars"
-
+spaceChars = many spaceChar <?> "failed to consume zero or more spaces, basically this should not happen"
 
 -- merge adjacent spaces into a sequence of spaces
 mergeSpaces :: [Either Spaces Attribute] -> [Either Spaces Attribute]
@@ -212,13 +242,6 @@ wrapTagC :: String -> String
 wrapTagC tag = "</" ++ tag ++ ">"
 
 
--- void elements
--- these elements has no closing tag. but we permit either <area ... >, <area ... />, or <area ...></area>
-isVoidElement :: String -> Bool
-isVoidElement = (`elem` ["area", "base", "br", "col", "command", "embed", "hr", "img", "input", "keygen", "link", "meta", "param", "source", "track", "wbr"])
-
-
-
 ------------------------
 -- printing function from CST to HTML
 prtDocument :: HTMLDoc -> String
@@ -231,11 +254,11 @@ prtDocumentBody (HTMLDoc pre doctype mid (GTreeNode _ ele) tra) = concatMap prtH
           findBody (x:xs) = findBody xs
 
 prtHTML :: HTML -> String
-prtHTML (GTreeNode (CTag _ tn sOrAs SelfClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ "/>"
-prtHTML (GTreeNode (CTag _ tn sOrAs NoClose) [])     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ ">"
+prtHTML (GTreeNode (CTag _ tn sOrAs SelfClose) []) = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ "/>"
+prtHTML (GTreeNode (CTag _ tn sOrAs NoClose) [])   = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ ">"
 prtHTML (GTreeNode (CTag _ tn sOrAs NormalClose) children) = wrapTagO (prtCTagName tn ++ flatSorAs sOrAs) ++ concatMap prtHTML children ++ wrapTagC (prtCTagName tn)
-prtHTML (GTreeLeaf (CTag _ tn sOrAs SelfClose))     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ "/>"
-prtHTML (GTreeLeaf (CTag _ tn sOrAs NoClose))     = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ ">"
+prtHTML (GTreeLeaf (CTag _ tn sOrAs SelfClose))    = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ "/>"
+prtHTML (GTreeLeaf (CTag _ tn sOrAs NoClose))      = "<" ++ prtCTagName tn ++ flatSorAs sOrAs ++ ">"
 prtHTML (GTreeLeaf (CTagText _ (TL entity))) = prtEntity entity
 prtHTML (GTreeLeaf (CTagText _ (TM spaces))) = spaces
 prtHTML (GTreeLeaf (CTagText _ (TR str))) = str
@@ -252,33 +275,6 @@ prtEntity EntityGT1 = "&gt;"
 prtEntity EntityGT2 = "&#62;"
 prtEntity EntityAmp1 = "&amp;"
 prtEntity EntityAmp2 = "&#38;"
-
-------- entities to be supported ----------
---EntityCent1
---EntityCent2
---EntityPound1
---EntityPound2
---EntityYen1
---EntityYen2
---EntityEuro1
---EntityEuro2
---EntityCopy1
---EntityCopy2
---EntityReg1
---EntityReg2
-
--- ¢ cent  "&cent";  "&#162";
--- £ pound "&pound"; "&#163";
--- ¥ yen "&yen"; "&#165";
--- € euro  "&euro";  "&#8364";
--- © copyright "&copy";  "&#169";
--- ® registered trademark  "&reg"; "&#174";
-
--- &#768;
--- &#769;
---̂ &#770;
--- &#771;
-------- entities to be supported ----------
 
 flatSorAs :: [Either Spaces Attribute] -> String
 flatSorAs [] = ""
@@ -305,12 +301,11 @@ prtSupportedName CStrike      = "strike"
 prtSupportedName CSuperscript = "sup"; prtSupportedName CSubscript = "sub"
 prtSupportedName CQuoted = "q"       ; prtSupportedName CCite = "cite"
 prtSupportedName CLink = "a"         ; prtSupportedName CImg = "img"
-
-
-
 ------------------------
 
--- transfer the entities to the corresponding constructors.
+
+------------do some refinement to the parse tree ---------
+-- 1. transfer the entities to the corresponding constructors.
 recogEntities :: HTML -> Writer [String] HTML
 recogEntities t@(GTreeNode (CTag mk0 tn attrs mk1) subtags) =
   if isSubtreeInline t
@@ -318,6 +313,10 @@ recogEntities t@(GTreeNode (CTag mk0 tn attrs mk1) subtags) =
             return (GTreeNode (CTag mk0 tn attrs mk1) (concat res))
     else liftM (GTreeNode (CTag mk0 tn attrs mk1)) (mapM recogEntities subtags)
 recogEntities t = return t
+
+isSubtreeInline :: GTree CTag -> Bool
+isSubtreeInline (GTreeNode (CTag _ (Left tn) _ _) _) = tn `elem` [CPara, CHead 1, CHead 2, CHead 3, CHead 4, CHead 5, CHead 6, CPre, CCode]
+isSubtreeInline _ = False
 
 
 -- code not handled yet
@@ -354,8 +353,8 @@ refineDoc (HTMLDoc s0 doctype s1 html s2) =
       trace' s v = if null s then v else trace s v
   in  trace' (unlines warns) $ HTMLDoc s0 doctype s1 (markTextNodeType res) s2
 
--- to distinguish Inline TextNode and Other TextNode.
--- to merge adjacent spaces together.
+-- 2. distinguish Inline TextNode and Other TextNode.
+-- 3. merge adjacent spaces together.
 markTextNodeType :: HTML -> HTML
 markTextNodeType t@(GTreeNode (CTag mk0 tn attrs mk1) subtags) =
   if isSubtreeInline t
@@ -405,48 +404,24 @@ divideAtLineBreak (GTreeLeaf (CTagText InlineText (TM spaces))) = divideAtLineBr
                         ""           -> [GTreeLeaf (CTagText InlineText (TM a))]
 
 
-isSubtreeInline :: GTree CTag -> Bool
-isSubtreeInline (GTreeNode (CTag _ (Left tn) _ _) _) = tn `elem` [CPara, CHead 1, CHead 2, CHead 3, CHead 4, CHead 5, CHead 6, CPre, CCode]
-isSubtreeInline _ = False
+  ------- entities to be supported ----------
+  --EntityCent1
+  --EntityCent2
+  --EntityPound1
+  --EntityPound2
+  --EntityYen1
+  --EntityYen2
+  --EntityEuro1
+  --EntityEuro2
+  --EntityCopy1
+  --EntityCopy2
+  --EntityReg1
+  --EntityReg2
 
--- in order to be compatible with Markdown, temporarily set all contents excluding <code>
--- within <pre> to the tag to be filtered out later
-
-------------------------
-parseHTML :: String -> HTMLDoc
-parseHTML src = refineDoc $ either (error . parseErrorPretty) id (runParser parseDoc "" src)
-
-parseHTMLBody :: String -> HTMLDoc
-parseHTMLBody src = refineDoc $ embHTMLBody (either (error . parseErrorPretty) id (runParser (many pAnyNode) "" src))
-
-embHTMLBody :: [HTML] -> HTMLDoc
-embHTMLBody body = HTMLDoc ""  doctype " " html "\n"
-    where doctype = "<!DOCTYPE HTML>"
-          html    = (GTreeNode (CTag Block (Right "html") [] NormalClose)
-                        [GTreeLeaf (CTagText OtherText (TR "\n"))
-                        ,GTreeNode (CTag Block (Right "head") [] NormalClose) [GTreeLeaf (CTagText OtherText (TR "\n"))]
-                        ,GTreeLeaf (CTagText OtherText (TR "\n  "))
-                        ,GTreeNode (CTag Block (Right "body") [] NormalClose) body])
-
-emptyHTMLCST = embHTMLBody []
-
-emptyHTMLStr = "<!DOCTYPE HTML>\n<html>\n<head>\n</head>\n<body>\n</body>\n</html>"
-
-emptyHTMLBodyStr = ""
-
-t1 :: IO ()
-t1 = do
-  i <- readFile "test111.html"
-  let oo  = parseHTML i
-  putStrLn "html CST:"
-  putStrLn (ppShow oo)
-  putStrLn "print CST back:"
-  putStrLn (prtDocument oo)
-  putStrLn "\nequal?\n"
-  putStrLn (show (prtDocument oo == i))
-
-t1w :: IO ()
-t1w = do
-  i <- readFile "1.html"
-  let o = either (error. show) show (parse parseDoc "1.html" i)
-  writeFile "1o.html" o
+  -- ¢ cent  "&cent";  "&#162";
+  -- £ pound "&pound"; "&#163";
+  -- ¥ yen "&yen"; "&#165";
+  -- € euro  "&euro";  "&#8364";
+  -- © copyright "&copy";  "&#169";
+  -- ® registered trademark  "&reg"; "&#174";
+  ------- entities to be supported ----------
