@@ -50,31 +50,31 @@ This is a summary for the work about docx format of two months.
 
 	 	A table consists of rows and cells and is structured much like an `HTML` table. It is defined with the `<w:tbl>` element. A simple example is like this:
 	 
- 		<w:tbl>
-			<w:tblPr>
-				<w:tblStyle w:val="TableGrid"/>
-				<w:tblW w:w="5000" w:type="pct"/>
-			</w:tblPr>
-			<w:tblGrid>
-				<w:gridCol w:w="2880"/>
-				<w:gridCol w:w="2880"/>
-				<w:gridCol w:w="2880"/>
-			</w:tblGrid>
-			<w:tr>
-				<w:tc>
-					<w:tcPr>
-						<w:tcW w:w="2880" w:type="dxa"/>
-					</w:tcPr>
-					<w:p>
-						<w:r>
-							<w:t>AAA</w:t>
-						</w:r>
-					</w:p>
-				</w:tc>
-				. . .					
-			</w:tr>
-			. . .
-		</w:tbl>
+	 		<w:tbl>
+				<w:tblPr>
+					<w:tblStyle w:val="TableGrid"/>
+					<w:tblW w:w="5000" w:type="pct"/>
+				</w:tblPr>
+				<w:tblGrid>
+					<w:gridCol w:w="2880"/>
+					<w:gridCol w:w="2880"/>
+					<w:gridCol w:w="2880"/>
+				</w:tblGrid>
+				<w:tr>
+					<w:tc>
+						<w:tcPr>
+							<w:tcW w:w="2880" w:type="dxa"/>
+						</w:tcPr>
+						<w:p>
+							<w:r>
+								<w:t>AAA</w:t>
+							</w:r>
+						</w:p>
+					</w:tc>
+					. . .					
+				</w:tr>
+				. . .
+			</w:tbl>
 			
 			
      `<w:tblGrid>` specifies the columns for the table.
