@@ -59,32 +59,5 @@ testDocxReader filename = do
     putStrLn (printMarkdown markdownCST)
     writeFile "docxToMarkdown.md" (printMarkdown markdownCST)
 
-    --let htmlCST' = fmap (parseHTML . prtDocument) htmlCST
-    --putStrInGreen "Print and re-parse htmlCST: \n"
-    --putPretty htmlCST'
-    --putStrLn ""
-    ----
-    --let view' = htmlCST' >>= get htmlBX
-    --putStrInGreen "Got view from HTML: \n"
-    --putPretty view'
-    --putStrLn ""
-
-    --
-    --let src' = (view' >>= \v -> put markdownBX md v)
-    --putStrInGreen "Put back to source md:\n"
-    --putPretty src'
-    --putStrLn ""
-    --putStrInGreen "Equal to the original source? "
-    --setSGR [SetColor Foreground Vivid Red]
-    --print (fromMaybe False (src' >>= \s -> return (s == md)))
-    --setSGR [Reset]
-    --putStrLn ""
-    ----
-    --putStrInGreen "Printed put-back source equals orignal file? "
-    --setSGR [SetColor Foreground Vivid Red]
-    --let f' = fmap printMarkdown src'
-    --if (Just f == f')
-    --   then putStrLn "True"
-    --   else do putStrLn "False"; putStrLn (f ++ "\nvs.\n\n" ++ (fromMaybe "" f'))
     putStrLn ""
     setSGR [Reset]
