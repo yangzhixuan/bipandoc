@@ -31,55 +31,55 @@ This is a summary for the work about docx format of two months.
 	 
 	     Paragraph is the basic unit in `docx` document. It shows like this:
 	     
-				<w:p>
-                    <w:pPr>
-                        <w:pStyle w:val="FirstParagraph"/>
-                    </w:pPr>
-                    <w:r>
-                        <w:rPr>
-                            <w:rStyle w:val=“Normal”/>
-                            <w:i/>
-                        </w:rPr>
-                        <w:t xml:space=“preserve">simple test</w:t>
-                    </w:r>
-                </w:p>
+			<w:p>
+                <w:pPr>
+                    <w:pStyle w:val="FirstParagraph"/>
+                </w:pPr>
+                <w:r>
+                    <w:rPr>
+                        <w:rStyle w:val=“Normal”/>
+                        <w:i/>
+                    </w:rPr>
+                    <w:t xml:space=“preserve">simple test</w:t>
+                </w:r>
+            </w:p>
 
-	 		`<w:p>` means this is a paragraph, `<w:pPr>` contains the properties of this paragraph, `<w:r>` contains the content of this paragraph. However, there may be many `<w:r>` in one paragraph.
+	 	`<w:p>` means this is a paragraph, `<w:pPr>` contains the properties of this paragraph, `<w:r>` contains the content of this paragraph. However, there may be many `<w:r>` in one paragraph.
 	 	
 	 * Table
 
-	 A table consists of rows and cells and is structured much like an `HTML` table. It is defined with the `<w:tbl>` element. A simple example is like this:
+	 	A table consists of rows and cells and is structured much like an `HTML` table. It is defined with the `<w:tbl>` element. A simple example is like this:
 	 
-	 		<w:tbl>
-				<w:tblPr>
-					<w:tblStyle w:val="TableGrid"/>
-					<w:tblW w:w="5000" w:type="pct"/>
-				</w:tblPr>
-				<w:tblGrid>
-					<w:gridCol w:w="2880"/>
-					<w:gridCol w:w="2880"/>
-					<w:gridCol w:w="2880"/>
-				</w:tblGrid>
-				<w:tr>
-					<w:tc>
-						<w:tcPr>
-							<w:tcW w:w="2880" w:type="dxa"/>
-						</w:tcPr>
-						<w:p>
-							<w:r>
-								<w:t>AAA</w:t>
-							</w:r>
-						</w:p>
-					</w:tc>
-					. . .					
-				</w:tr>
-				. . .
-			</w:tbl>
+ 		<w:tbl>
+			<w:tblPr>
+				<w:tblStyle w:val="TableGrid"/>
+				<w:tblW w:w="5000" w:type="pct"/>
+			</w:tblPr>
+			<w:tblGrid>
+				<w:gridCol w:w="2880"/>
+				<w:gridCol w:w="2880"/>
+				<w:gridCol w:w="2880"/>
+			</w:tblGrid>
+			<w:tr>
+				<w:tc>
+					<w:tcPr>
+						<w:tcW w:w="2880" w:type="dxa"/>
+					</w:tcPr>
+					<w:p>
+						<w:r>
+							<w:t>AAA</w:t>
+						</w:r>
+					</w:p>
+				</w:tc>
+				. . .					
+			</w:tr>
+			. . .
+		</w:tbl>
 			
 			
-		`<w:tblGrid>` specifies the columns for the table.
-		`<tblPr>` specifies the table-wide properties for the table. 
-	 	`<w:tr>` specifies a table row.
+     `<w:tblGrid>` specifies the columns for the table.
+`<tblPr>` specifies the table-wide properties for the table. 
+`<w:tr>` specifies a table row.
 	 
 	 * List
 	 
