@@ -77,7 +77,7 @@ This is a summary for the work about docx format of two months.
 			</w:tbl>
 			
 			
-     `<w:tblGrid>` specifies the columns for the table.
+  `<w:tblGrid>` specifies the columns for the table.
 `<tblPr>` specifies the table-wide properties for the table. 
 `<w:tr>` specifies a table row.
 	 
