@@ -15,24 +15,24 @@ import Data.Map
 
 import Abstract
 
--- dataStructure of Docx CST
+---- data structure of Docx CST ----
 
 type DocxCST = [Block]
 
 data ReDocxCST = Docx [Block] deriving (Eq, Show)
 
 data Block = Para [Inline]
-           | Table [Tr]
+           | Table [Tr] -- tr: table row
            | OrderedList [ReListItem]
            | UnorderedList [ReListItem]
            | ListItem Int Int [Inline] -- level, numId, content
            deriving (Eq, Show)
 
 data ReListItem = OrderedListItem Int Int [Block] -- level, numId, content
-                | UnorderedListItem Int Int [Block]  -- same
+                | UnorderedListItem Int Int [Block]  -- level, numId, content
                 deriving (Eq, Show)
 
-data Tr = Tr [Tc] deriving (Eq, Show)
+data Tr = Tr [Tc] deriving (Eq, Show) -- tc: table column
 data Tc = Tc [Block] deriving (Eq, Show)
 
 data Inline = Text String
@@ -42,66 +42,70 @@ data Inline = Text String
             | Tab
             | Br
             | Cr
-            | Link String [Inline]  --address, text
+            | Link String [Inline]  --target, text
             | Drawing
             deriving (Eq, Show)
 
 
--- deal with the document.xml
-
-  -- deal with Inline element
+---- deal with the document.xml ----
+ 
+---- deal with Inline element ----
 
 getInlineContent :: XmlTrees -> [Inline]
-getInlineContent ((NTree node sons):ns) =
-  case node of XTag ((T.mkName "w:tab" ==) -> True) tagContent -> [Tab] ++ (getInlineContent ns)
-               XTag ((T.mkName "w:br" ==) -> True) tagContent -> [Br] ++ (getInlineContent ns)
-               XTag ((T.mkName "w:cr" ==) -> True) tagContent -> [Cr] ++ (getInlineContent ns)
-               XTag ((T.mkName "w:t" ==) -> True) tagContent -> (getInlineContent sons) ++ (getInlineContent ns)
-               XText str -> [Text str]
-               XTag qname tagContent -> getInlineContent ns
 getInlineContent [] = []
-
+getInlineContent ((NTree node sons):ns) =
+  case node of 
+    XTag ((T.mkName "w:tab" ==) -> True) tagContent -> [Tab] ++ (getInlineContent ns)
+    XTag ((T.mkName "w:br" ==) -> True) tagContent -> [Br] ++ (getInlineContent ns)
+    XTag ((T.mkName "w:cr" ==) -> True) tagContent -> [Cr] ++ (getInlineContent ns)
+    XTag ((T.mkName "w:t" ==) -> True) tagContent -> (getInlineContent sons) ++ (getInlineContent ns)
+    XText str -> [Text str]
+    XTag qname tagContent -> getInlineContent ns
 
 getInlinePr :: (XmlTrees, [Inline]) -> [Inline]
 getInlinePr ([], content) = content
 getInlinePr (((NTree node sons):ns), content) =
-  case node of XTag ((T.mkName "w:b" ==) -> True) tagContent ->
-                 if tagContent == []
-                 then [Bold (getInlinePr (ns, content))]
-                 else getInlinePr (ns, content)
-               XTag ((T.mkName "w:i" ==) -> True) tagContent ->
-                 if tagContent == []
-                 then [Emph (getInlinePr (ns, content))]
-                 else getInlinePr (ns, content)
-               XTag ((T.mkName "w:strike" ==) -> True) tagContent ->
-                 if tagContent == []
-                 then [Strike (getInlinePr (ns, content))]
-                 else getInlinePr (ns, content)
-               XTag qname tagContent -> getInlinePr (ns, content)
-
+  case node of 
+    XTag ((T.mkName "w:b" ==) -> True) tagContent ->
+      if tagContent == []
+      then [Bold (getInlinePr (ns, content))]
+      else getInlinePr (ns, content)
+    XTag ((T.mkName "w:i" ==) -> True) tagContent ->
+      if tagContent == []
+      then [Emph (getInlinePr (ns, content))]
+      else getInlinePr (ns, content)
+    XTag ((T.mkName "w:strike" ==) -> True) tagContent ->
+      if tagContent == []
+      then [Strike (getInlinePr (ns, content))]
+      else getInlinePr (ns, content)
+    XTag qname tagContent -> getInlinePr (ns, content)
 
 getLinkType :: XmlTrees -> String
 getLinkType ((NTree node sons):ns) =
-  case node of XAttr ((T.mkName "r:id" ==) -> True) ->
-                 case sons of ((NTree (XText str) s'):ss) -> str
-                              _ -> ""
-               _ -> ""
+  case node of 
+    XAttr ((T.mkName "r:id" ==) -> True) ->
+      case sons of 
+        ((NTree (XText str) s'):ss) -> str
+        _ -> ""
+    _ -> ""
+
+getInlineWr :: XmlTrees -> Map String String -> [Inline]
+getInlineWr [] relMap = []
+getInlineWr ((NTree node sons):ns) relMap =
+ case node of
+   XTag ((T.mkName "w:rPr" ==) -> True) tagContent ->
+     let content = getInlineContent ns
+     in  getInlinePr (sons, content)
+   XTag ((T.mkName "w:t" ==) -> True) tagContent ->
+     let content = getInlineContent sons
+     in getInlinePr ([], content)
+   XTag qname tagContent -> getInlineWr ns relMap
 
 getInline :: XmlTrees -> Map String String -> [Inline]
 getInline [] _ = []
---getInline ((NTree node ((NTree node' sons'):ns')):ns) =
 getInline ((NTree node sons):ns) relMap =
   case node of
-    XTag ((T.mkName "w:r" ==) -> True) tagContent ->
-      case sons of((NTree node' sons'):ns') ->
-                    case node' of XTag ((T.mkName "w:rPr" ==) -> True) tagContent ->
-                                    let content = getInlineContent ns'
-                                    in  getInlinePr (sons', content) ++ getInline ns relMap
-                                  XTag ((T.mkName "w:t" ==) -> True) tagContent ->
-                                      let content = getInlineContent sons
-                                      in getInlinePr ([], content) ++ getInline ns relMap
-                                  XTag qname tagContent -> getInline ns relMap
-                  [] -> getInline ns relMap
+    XTag ((T.mkName "w:r" ==) -> True) tagContent -> (getInlineWr sons relMap) ++ getInline ns relMap
     XTag ((T.mkName "w:hyperlink" ==) -> True) tagContent ->
       let linkType = getLinkType tagContent in
       if linkType == ""
@@ -109,17 +113,15 @@ getInline ((NTree node sons):ns) relMap =
       else [Link (relMap ! linkType) (getInline sons relMap)] ++ getInline ns relMap
     XTag qname tagContent -> getInline ns relMap
 
-
 getListValue :: XmlTree -> Int
 getListValue (NTree node sons) =
-  case node of XTag qname tagContent -> getListValue (tagContent !! 0)
-               XAttr qname -> getListValue (sons !! 0)
-               XText str -> (read str) :: Int
-
+  case node of 
+    XTag qname tagContent -> getListValue (tagContent !! 0)
+    XAttr qname -> getListValue (sons !! 0)
+    XText str -> (read str) :: Int
 
 getParaPr :: (XmlTrees, [Inline]) -> Block
 getParaPr ([], content) = Para content
-
 getParaPr (((NTree node sons):ns), content) =
   case node of
     XTag ((T.mkName "w:numPr" ==) -> True) tagContent ->
@@ -127,68 +129,64 @@ getParaPr (((NTree node sons):ns), content) =
       if num_temp == 0
         then getParaPr (ns, content)
       else ListItem (getListValue (sons !! 0)) (getListValue (sons !! 1)) content
-
     XTag qname tagContent -> getParaPr (ns, content)
 
 getParaBlock :: XmlTrees -> Map String String -> Block
 getParaBlock ((NTree node sons):ns) relMap =
   let paraContent = getInline ns relMap in
-    --DT.trace("inline " ++ show paraContent) (getParaPr (sons, paraContent))
     getParaPr (sons, paraContent)
 
+-- deal with table (not implemented yet)
 getTblBlock :: XmlTrees -> Map String String -> Block
 getTblBlock _ _ = Table []
 
-{-getTblBlock [] = []
-getTblBlock ((NTree node sons):ns) =
-  case node of XTag ((T.mkName "w:tr" ==) -> True) tagContent ->
-               XTag qname tagContent -> getTblBlock ns-}
-
 resolve :: (XmlTrees, DocxCST) -> Map String String -> DocxCST
+resolve ([], blockList) relMap = blockList
 resolve (((NTree node sons):ns), blockList) relMap =
     case node of XTag qname tagContent ->
                     let tagStr = qualifiedName qname in
                     if tagStr == "w:document" || tagStr == "w:body"
                       then resolve (sons, blockList) relMap
-                      else
-                        if tagStr == "w:p"
-                          then resolve (ns, blockList ++ [getParaBlock sons relMap]) relMap
-                          else
-                            if tagStr == "w:tbl"
-                              then resolve (ns, blockList ++ [getTblBlock sons relMap]) relMap
-                              else resolve (ns, blockList) relMap
+                    else if tagStr == "w:p"
+                      then resolve (ns, blockList ++ [getParaBlock sons relMap]) relMap
+                    else if tagStr == "w:tbl"
+                      then resolve (ns, blockList ++ [getTblBlock sons relMap]) relMap
+                    else resolve (ns, blockList) relMap
 
-resolve ([], blockList) relMap = blockList
 
+-- entry of resolve
 getCST :: [XmlTree] -> Map String String -> DocxCST
 getCST ((NTree _ ts) :xs) relMap = resolve (ts, []) relMap
 
 
--- deal with the rels of document and get the Map of rels
+---- deal with the rels of document and get the Map of rels ----
 
 getRid :: XmlTrees -> String
 getRid ((NTree node sons):ns) =
-  case node of XAttr ((T.mkName "Id" ==) -> True) ->
-                  case sons of ((NTree (XText str) sons):ns') -> str
-               _ -> getRid ns
+  case node of 
+    XAttr ((T.mkName "Id" ==) -> True) ->
+      case sons of ((NTree (XText str) sons):ns') -> str
+    _ -> getRid ns
 
 getTarget :: XmlTrees -> String
 getTarget ((NTree node sons):ns) =
-  case node of XAttr ((T.mkName "Target" ==) -> True) ->
-                  case sons of ((NTree (XText str) sons'):ns') -> str
-               _ -> getTarget ns
-
-getRels :: [XmlTree] -> Map String String
-getRels ((NTree node ((NTree node' sons'):ns')):ns) = fromList $ getRidMap sons'
+  case node of 
+    XAttr ((T.mkName "Target" ==) -> True) ->
+      case sons of ((NTree (XText str) sons'):ns') -> str
+    _ -> getTarget ns
 
 getRidMap :: XmlTrees -> [(String, String)]
 getRidMap [] = []
 getRidMap ((NTree node sons):ns) =
-  case node of XTag ((T.mkName "Relationship" ==) -> True) tagContent -> [(getRid tagContent, getTarget tagContent)] ++ getRidMap ns
-               _ -> getRidMap ns
+  case node of 
+    XTag ((T.mkName "Relationship" ==) -> True) tagContent -> [(getRid tagContent, getTarget tagContent)] ++ getRidMap ns
+    _ -> getRidMap ns
+
+getRels :: [XmlTree] -> Map String String
+getRels ((NTree node ((NTree node' sons'):ns')):ns) = fromList $ getRidMap sons'
 
 
--- deal with the list information of document.xml in numbering.xml
+---- deal with the list information of document.xml in numbering.xml ----
 
 getListStyle :: [XmlTree] -> (Map String String, Map String String)
 getListStyle ((NTree node ((NTree node' sons'):ns')):ns) =
@@ -213,13 +211,12 @@ dealNumbering ((NTree node sons):ns) l1 l2 =
 
     _ -> dealNumbering ns l1 l2
 
-
 getNumId :: XmlTrees -> String -> String
 getNumId ((NTree node sons):ns) attrName =
-  case node of XAttr ((T.mkName attrName ==) -> True) ->
-                  case sons of ((NTree (XText str) sons'):ns') -> str
-               _ -> getNumId ns attrName
-
+  case node of 
+    XAttr ((T.mkName attrName ==) -> True) ->
+      case sons of ((NTree (XText str) sons'):ns') -> str
+    _ -> getNumId ns attrName
 
 getLvlList :: XmlTrees -> String -> [(String, String)]
 getLvlList [] _ = []
@@ -232,7 +229,6 @@ getLvlList ((NTree node sons):ns) absNumId =
 
     _ -> getLvlList ns absNumId
 
-
 getStyle :: XmlTrees -> String
 getStyle ((NTree node sons):ns) =
   case node of
@@ -242,7 +238,7 @@ getStyle ((NTree node sons):ns) =
     _ -> getStyle ns
 
 
---rifine the CST
+---- rifine the CST ----
 
 getListItem :: Block -> (Map String String, Map String String) -> ReListItem
 getListItem (ListItem level numId content) mapTuple =
@@ -290,39 +286,34 @@ refineList mapTuple cst@(block:next@(bn:bs)) now_list =
     ListItem level numId content ->
       case bn of
         ListItem bLevel bNumId bContent ->
+          -- this listItem and next listItem are in the same list
           if bLevel == level && bNumId == numId
             then refineList mapTuple next (addItem now_list block mapTuple)
-
+          -- this listItem and next listItem has the same level but they are in different list
           else if bLevel == level && not (bNumId == numId)
             then let rest_ans = refineList mapTuple next (getInitList bn mapTuple) in
               (((addItem now_list block mapTuple) ++ fst rest_ans), snd rest_ans)
-
+          -- this listItem item is outer than next listItem
           else if level < bLevel
             then let rest_ans = refineList mapTuple next (getInitList bn mapTuple)
                      restLines = snd rest_ans
             in if restLines == []
-                 --then refineList mapTuple restLines (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans))
                  then refineList mapTuple restLines (addItemByBlock now_list block ([block]++(fst rest_ans)))
                else
                  let restFirst = head restLines in
                  case restFirst of
                    ListItem rLevel rNumId rContent ->
                      if level > rLevel
-                       --then (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans), restLines)
                        then (addItemByBlock now_list block ([block]++(fst rest_ans)), restLines)
                      else if rLevel == level && rNumId == numId
-                       --then refineList mapTuple restLines (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans))
                        then refineList mapTuple restLines (addItemByBlock now_list block ([block]++(fst rest_ans)))
                      else if rLevel == level && not (rNumId == numId)
                        then let rest_ans' = refineList mapTuple restLines (getInitList restFirst mapTuple) in
-                         --(((addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans)) ++ fst rest_ans'), snd rest_ans')
                          (((addItemByBlock now_list block ([block]++(fst rest_ans))) ++ fst rest_ans'), snd rest_ans')
                      else error "The list structure is wrong"
 
-                   --_ -> refineList mapTuple restLines (addItemByBlock (addItem now_list block mapTuple) block (fst rest_ans))
                    _ -> refineList mapTuple restLines (addItemByBlock now_list block ([block]++(fst rest_ans)))
-
-
+          -- this listItem is inner than next listItem
           else if level > bLevel
             then (addItem now_list block mapTuple, next)
           else error "The list structure is wrong"
@@ -343,7 +334,9 @@ refine cst@(block:bs) mapTuple =
     _ -> [block] ++ refine bs mapTuple
 
 
---refine str to make it like Markdown
+---- refine str to make it like Markdown ----
+-- there are only one space independent, and non-space must be together.
+-- e.g. "  Hello, this is  example. " -> [" ", "Hello,", " ", "this", " ", "is", " ", "example.", " "]
 
 findNextNonStr :: [AbsInline] -> String -> (String, [AbsInline])
 findNextNonStr [] str = (str, [])
@@ -352,8 +345,7 @@ findNextNonStr (inline:is) str =
     AbsStr text -> findNextNonStr is (str ++ text)
     _ -> (str, (inline:is))
 
-
-getRefinedStr :: String -> String -> String -> [AbsInline]
+getRefinedStr :: String -> String -> String -> [AbsInline]  -- rest str wait to be dealed -> now str need to be dealed -> last char -> dealed str
 getRefinedStr [] now_str lastChar = [AbsStr now_str]
 getRefinedStr (c:cs) now_str lastChar =
   if not (c == ' ') then
@@ -366,6 +358,7 @@ getRefinedStr (c:cs) now_str lastChar =
     else getRefinedStr cs [c] [c]
 
 
+-- entry function
 refineStr :: [AbsInline] -> [AbsInline]
 refineStr [] = []
 refineStr (inline:is) =
@@ -381,7 +374,7 @@ refineStr (inline:is) =
     _ -> [inline] ++ (refineStr is)
 
 
--- transfer CST to AST
+---- transfer docx CST to core AST ----
 
 transferInline :: [Inline] -> [AbsInline]
 transferInline [] = []
@@ -396,14 +389,12 @@ transferInline (inline:is) =
     Cr -> [AbsHardbreak] ++ (transferInline is)
     Link address texts -> [AbsLink (transferInline texts) address] ++ (transferInline is)
 
-
 transferListItem :: [ReListItem] -> [AbsListItem]
 transferListItem [] = []
 transferListItem (item:is) =
   case item of
     OrderedListItem _ _ blocks -> [AbsOrderedListItem (transferToAST blocks)] ++ (transferListItem is)
     UnorderedListItem _ _ blocks -> [AbsUnorderedListItem (transferToAST blocks)] ++ (transferListItem is)
-
 
 transferBlock :: Block -> [AbsBlock]
 transferBlock block =
@@ -414,36 +405,31 @@ transferBlock block =
     OrderedList items -> [AbsOrderedList (transferListItem items)]
     UnorderedList items -> [AbsUnorderedList (transferListItem items)]
 
-
 transferToAST :: [Block] -> [AbsBlock]
 transferToAST [] = []
 transferToAST (block:bs) = (transferBlock block) ++ (transferToAST bs)
 
 
--- get ByteString of XML file from .docx by docxFileName and XMLfilePath in docx
+---- get ByteString of XML file from .docx by docxFileName and XMLfilePath in docx ----
 
-dealInput :: String -> String -> IO ByteString
+dealInput :: String -> String -> IO ByteString -- docxfilePath -> xmlFilePath in docx zip -> ByteString
 dealInput filePath xmlFile =
   let Just entrySelector = mkEntrySelector (Path xmlFile) :: Maybe EntrySelector
   in withArchive (Path filePath) (getEntry entrySelector)
 
-
-getEntrySelector :: String -> String -> EntrySelector
+getEntrySelector :: String -> String -> EntrySelector -- docxfilePath -> xmlFilePath in docx zip -> entryselector
 getEntrySelector filePath xmlFile =
   let Just entrySelector = mkEntrySelector (Path xmlFile) :: Maybe EntrySelector
   in entrySelector
 
-
+-- entry to get the CST
 getDocxCST :: String -> IO DocxCST
 getDocxCST fileName = do
-  --argList <- getArgs
   documentByteStr <- dealInput fileName "word/document.xml"
   relByteStr <- dealInput fileName "word/_rels/document.xml.rels"
-  --numberingByteStr <- dealInput fileName "word/numbering.xml"
   relTrees <- runX $ readString [withValidate no] (toString relByteStr)
-  --numberingTrees <- runX $ readString [withValidate no] (toString numberingByteStr)
   xmlTrees <- runX $ readString [withValidate no] (toString documentByteStr)
-
+  -- judge whether there is numbering.xml file
   flag <- withArchive (Path fileName) (doesEntryExist $ getEntrySelector fileName "word/numbering.xml")
   if flag then do
     numberingByteStr <- dealInput fileName "word/numbering.xml"
@@ -451,13 +437,6 @@ getDocxCST fileName = do
     return $ refine (getCST xmlTrees (getRels relTrees)) (getListStyle numberingTrees)
   else
     return $ getCST xmlTrees (getRels relTrees)
-
-  --return $ refine (getCST xmlTrees (getRels relTrees)) (getListStyle numberingTrees)
-  --putStrLn . ppShow $ getListStyle numberingTrees
-  --print numberingTrees
-  --print (getCST xmlTrees (getRels relTrees))
-  --putStrLn $ ppShow (AbsDocument (transferToAST $ refine (getCST xmlTrees (getRels relTrees)) (getListStyle numberingTrees)))
-  --putStrLn . ppShow $ transferToAST $ refine (getCST xmlTrees (getRels relTrees)) (getListStyle numberingTrees)
 
 
 getDocxAST :: DocxCST -> AbsDocument
