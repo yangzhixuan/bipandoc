@@ -279,7 +279,7 @@ minEditDistLens :: (Show s, Show v, Eq s, Eq v) => BiGUL s v -> (v -> s) -> BiGU
 minEditDistLens bx create = Case
     -- 'bx' tries to update from view to source by simply replacing elements in source and view one by one,
     -- If it is not the most efficient way, we try to add elements or delete elements.
-    [ $(adaptive [| \ s v -> length s /= length v  || structureEdit bx create s v /= s |])
+    [ $(adaptive [| \ s v -> length s /= length v || structureEdit bx create s v /= s |])
       ==> structureEdit bx create
     ,
      $(normalSV [p| _ |] [p| _ |] [p| _ |])

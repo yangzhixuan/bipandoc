@@ -77,9 +77,9 @@ putPretty :: Show a => a -> IO ()
 putPretty = putStr . ppShow 
 
 printMarkdown :: MarkdownDoc -> String
-printMarkdown md = evalState (markdownPrinter md) (PrinterStatus "" False False 0)
+printMarkdown md = evalState (markdownPrinter md) (PrinterStatus "" False True 0)
 
-data PrinterStatus = PrinterStatus{ defaultIndent :: String, _skipIndentOnce :: Bool, notFirstLine :: Bool, lastListNum :: Int }
+data PrinterStatus = PrinterStatus{ defaultIndent :: String, _skipIndentOnce :: Bool, lastBlockIsBlank :: Bool, lastListNum :: Int }
 
 markdownPrinter :: MarkdownDoc -> State PrinterStatus String
 markdownPrinter (MarkdownDoc blks) = do
@@ -111,58 +111,63 @@ indentPrinter ind = do
 blankIndentPrinter :: Indent -> State PrinterStatus String -> State PrinterStatus String
 blankIndentPrinter ind blkStr = do
     st <- get
-    let newBlankLinePre = if _skipIndentOnce st || ind /= DefaultIndent || not (notFirstLine st)
+    let newBlankLinePre = if _skipIndentOnce st || ind /= DefaultIndent || lastBlockIsBlank st
                              then "" else defaultIndent st ++ "\n"
     let newBlankLinePost = if ind /= DefaultIndent
                               then "" else defaultIndent st ++ "\n"
-    -- notFirstLine is used to avoid generating a blankline at the start of a file
-    modify (\st -> st{notFirstLine = True})
     s <- indentPrinter ind
 
     return (newBlankLinePre ++ s) <++> blkStr <++> return newBlankLinePost
 
 blockPrinter :: Block -> State PrinterStatus String
-blockPrinter blk = case blk of
-    (BlankLine ind s) -> indentPrinter ind <++> return s
+blockPrinter blk = do 
+    res <- case blk of
+        (BlankLine ind s) -> indentPrinter ind <++> return s
 
-    (Para ind inls) -> blankIndentPrinter ind $ concatMapM inlinePrinter inls <++> return "\n"
+        (Para ind inls) -> blankIndentPrinter ind $ concatMapM inlinePrinter inls <++> return "\n"
 
-    (ATXHeading ind atxs sps heading atx2 sps2) -> 
-        blankIndentPrinter ind $ return atxs <++> return sps <++> 
-        concatMapM inlinePrinter heading <++> return atx2 <++> return sps2
+        (ATXHeading ind atxs sps heading atx2 sps2) -> 
+            blankIndentPrinter ind $ return atxs <++> return sps <++> 
+            concatMapM inlinePrinter heading <++> return atx2 <++> return sps2
 
-    (SetextHeading ind heading sps2 ind2 unls sps) -> 
-        blankIndentPrinter ind $ concatMapM inlinePrinter heading <++> 
-        return sps2 <++> indentPrinter ind2 <++> return unls <++> return sps
+        (SetextHeading ind heading sps2 ind2 unls sps) -> 
+            blankIndentPrinter ind $ concatMapM inlinePrinter heading <++> 
+            return sps2 <++> indentPrinter ind2 <++> return unls <++> return sps
 
-    (UnorderedList items) -> concatMapM listItemPrinter items
+        (UnorderedList items) -> concatMapM listItemPrinter items
 
-    (OrderedList items) -> 
-        do oldCounter <- fmap lastListNum get
-           modify (\st -> st{lastListNum = 0})
-           s <- concatMapM listItemPrinter items
-           modify (\st -> st{lastListNum = oldCounter})
-           return s
+        (OrderedList items) -> 
+            do oldCounter <- fmap lastListNum get
+               modify (\st -> st{lastListNum = 0})
+               s <- concatMapM listItemPrinter items
+               modify (\st -> st{lastListNum = oldCounter})
+               return s
 
-    (BlockQuote ind str bs) ->
-        blankIndentPrinter ind $ return str <++>
-        do oldSt <- get
-           put oldSt{ defaultIndent = defaultIndent oldSt ++ ">", _skipIndentOnce = True }
-           s <- concatMapM blockPrinter bs
-           modify (\st -> st{defaultIndent = defaultIndent oldSt})
-           return s
+        (BlockQuote ind str bs) ->
+            blankIndentPrinter ind $ return str <++>
+            do oldSt <- get
+               put oldSt{ defaultIndent = defaultIndent oldSt ++ ">", _skipIndentOnce = True }
+               s <- concatMapM blockPrinter bs
+               modify (\st -> st{defaultIndent = defaultIndent oldSt})
+               return s
 
-    (IndentedCode codes) -> 
-        do oldSt <- get
-           put oldSt{ defaultIndent = defaultIndent oldSt ++ "    " }
-           s <- concatMapM codeLinePrinter codes
-           modify (\st -> st{ defaultIndent = defaultIndent oldSt })
-           return s
+        (IndentedCode codes) -> 
+            do oldSt <- get
+               put oldSt{ defaultIndent = defaultIndent oldSt ++ "    " }
+               s <- concatMapM codeLinePrinter codes
+               modify (\st -> st{ defaultIndent = defaultIndent oldSt })
+               return s
 
-    (FencedCode i1 f1 s1 codes i2 f2 s2) ->
-        blankIndentPrinter i1 $ return f1 <++> return s1 <++> 
-        concatMapM codeLinePrinter codes <++> indentPrinter i2 <++> 
-        return f2 <++> return s2
+        (FencedCode i1 f1 s1 codes i2 f2 s2) ->
+            blankIndentPrinter i1 $ return f1 <++> return s1 <++> 
+            concatMapM codeLinePrinter codes <++> indentPrinter i2 <++> 
+            return f2 <++> return s2
+
+    case blk of
+        (BlankLine ind s) -> modify (\st -> st{lastBlockIsBlank = True})
+        _ -> modify (\st -> st{lastBlockIsBlank = False})
+
+    return res
 
 
 inlinePrinter :: Inline -> State PrinterStatus String
@@ -307,11 +312,13 @@ atxHeading = try $ do
 
     atx <- manyRange 1 6 '#'
     spaces <- spaceChars
-    heading <- many1 ((notFollowedBy (many (char '#') >> (softbreak <|> hardbreak))) >> inline)
+    let closing = spaceChars >> many (char '#') >> spaceChars >> newline
+    heading <- many1 ((notFollowedBy closing) >> inline)
+    sps <- spaceChars
     closing_atx <- many (char '#')
     sps2 <- spaceChars
     newline
-    return $ ATXHeading (Indent ind) atx spaces heading closing_atx (sps2 ++ "\n")
+    return $ ATXHeading (Indent ind) atx spaces heading (sps ++ closing_atx) (sps2 ++ "\n")
 
 -- | Parses a setextHeading
 
