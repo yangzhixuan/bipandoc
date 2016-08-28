@@ -428,8 +428,8 @@ unorderedListItem  = try $ do
     let newIndent = addIndent st (1 + length sp2)
 
     -- EXPLANATION: consider:
-    -- * abc
-    --   def
+    -- > * abc
+    -- >   def
     -- When we start to parsing abc, the indentation should be skipped, so the indents is empty
     -- but when we start to parsing def, we should parse the indentation
 

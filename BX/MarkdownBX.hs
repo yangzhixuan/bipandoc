@@ -8,7 +8,7 @@ import qualified Data.Text as Text
 import Generics.BiGUL.Interpreter
 import Generics.BiGUL.TH
 
-import BX.BXHelpers
+import BX.Library
 
 import Abstract
 import CST.Markdown

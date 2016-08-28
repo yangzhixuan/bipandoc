@@ -22,14 +22,14 @@ import Debug.Trace
 type PU = Parsec Dec String
 
   --   CHTML           -- <html>
-  -- | CHead           -- <html>
-  -- | CBody           -- <html>
-  -- | Space        -- do not know what it is. maybe &npsp
-  -- | SmallCaps    -- no this
-  -- | CEmDash       -- &mdash
-  -- | CEnDash       -- &ndash
-  -- | CImg
-  -- | endnote, footnote... -- no these
+  --   CHead           -- <html>
+  --   CBody           -- <html>
+  --   Space        -- do not know what it is. maybe &npsp
+  --   SmallCaps    -- no this
+  --   CEmDash       -- &mdash
+  --   CEnDash       -- &ndash
+  --   CImg
+  --   endnote, footnote... -- no these
 
 
 supportedName :: Map String SupportedName

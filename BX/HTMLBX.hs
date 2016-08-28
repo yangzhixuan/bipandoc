@@ -8,7 +8,7 @@ import Generics.BiGUL.TH
 import Generics.BiGUL.Interpreter
 
 import Abstract
-import BX.BXHelpers
+import BX.Library
 
 import CST.HTMLParser
 import CST.HTMLParserDataType

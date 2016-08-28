@@ -1,6 +1,6 @@
 {-# Language TemplateHaskell, TypeFamilies #-}
 
-module BX.BXHelpers where
+module BX.Library where
 
 import Generics.BiGUL
 import Data.List
@@ -16,20 +16,11 @@ import Debug.Trace
 import Text.Show.Pretty
 
 
--- |
--- > (==>) = ($)
--- make it more elegant to write ($). Later we may use (==>) instead of ($).
+-- | make it more elegant to write ($) in 'Case' branches.
 (==>) :: (a -> b) -> a -> b
 (==>) = ($)
 
--- |
--- > emb g p = Case
--- >   [ $(normal [| \s v -> g s == v |] [p| _ |])
--- >     ==> Skip g
--- >   , $(adaptive [| \s v -> True |])
--- >     ==> p
--- >   ]
--- emb g p: invoke g to do the get, and invoke p to do the put.
+-- | emb g p: invoke g to do the get, and invoke p to do the put.
 emb :: Eq v => (s -> v) -> (s -> v -> s) -> BiGUL s v
 emb g p = Case
   [ $(normal [| \s v -> g s == v |] [p| _ |])
@@ -38,41 +29,11 @@ emb g p = Case
     ==> p
   ]
 
--- |
--- > naiveMap b =
--- >   Case  [ $(normalSV [p| _:_ |] [p| _:_ |]
--- >                      [p| _:_ |])
--- >           ==> $(update [p| x:xs |] [p| x:xs |] [d| x = b; xs = naiveMap b |])
--- >         , $(adaptiveSV [p| _:_ |] [p| [] |] ) (\_ _ -> [])
--- >         , $(normalSV [p| [] |] [p| _:_ |]
--- >                      [| const False |])
--- >           ==> (Fail "length of the view should be less than that of the source.")
--- >         , $(normalSV [p| [] |] [p| [] |]
--- >                      [p| [] |])
--- >           ==> $(update [p| [] |] [p| [] |] [d| |])
--- >         ]
--- A naive map function, which takes a BiGUL program and yields another BiGUL program working on list.
--- The first branch deals with recursive condition.
--- The second branch handles the boundary conditions where the source list is longer than the view list:
--- drop all the remaining elements in the source list and thus make it an empty list.
--- The third branch will throw an error when the view list is longer than the source list.
--- The last branch is the termination condition: both the source and view reach the empty constructor.
---
--- (For the sake of completeness.) In fact 'normalSV' means that we use separate condition for source and view.
--- So we can still use a general function in the predicate:
---
--- > $(normalSV [| \s -> case s of _:_ -> True; _ -> False |] [p| _:_  |] [p| _:_ |])
---
--- >>> put (naiveMap lensSucc) [1,2,3,4] [7,8,9]
--- Right [6,7,8]
---
--- >>> get (naiveMap (lensLength undefined)) ["123", "xyz"]
--- Right [3,3]
---
--- >>>get (naiveMap replaceMin) [(3,9), (-2,10),(10,2)]
--- Right [3,-2,2]
-
-mapLens :: (Show a, Show b) => BiGUL a b -> (b -> a) -> BiGUL [a] [b]
+-- | A lens which takes a BiGUL program and yields another BiGUL program working on list.
+mapLens :: (Show a, Show b)
+        => BiGUL a b            -- ^ The inner BX
+        -> (b -> a)             -- ^ The function to create a source element from the view when the source is empty
+        -> BiGUL [a] [b]
 mapLens b create =
   Case  [ $(normalSV [p| _:_ |] [p| _:_ |]
                      [p| _:_ |])
@@ -85,80 +46,7 @@ mapLens b create =
           ==> $(update [p| [] |] [p| [] |] [d| |])
         ]
 
--- |
--- > compose = Compose
--- The last combinator we are going to introduce is 'Compose',
--- which takes two BiGUL programs and behaves like \"function composition\".
---
--- Given two BiGUL programs,
---
--- > f :: BiGUL a b, g :: BiGUL b c
--- we have
---
--- > f `Compose` g :: BiGUL a c
--- In the get direction, the semantics of @get (f \`Compose\` g) s@ is:
--- (suppose the function 'get' and 'put' always return a value rather than a value wrapped in 'Right'.)
---
--- > get g (get f s)
--- In the put direction, the semantics of @put (f \`Compose\` g) s v@ is a little bit complex:
---
--- > put f s (put g (get f s) v)
--- Let us make it more clear:
---
--- > let a = get f s
--- >     b = put g a v
--- > in  put f s b
--- Check the type of these transformations by yourself will help you understand deeper.
---
--- Let us try some examples:
---
--- >>> put ((naiveMap replaceMin) `compose` (naiveMap lensSucc)) [(1,-1),(-2,2)] [-8, 1]
--- Right [(1,-9),(0,2)]
---
--- >>> get ((naiveMap replaceMin) `compose` (naiveMap lensSucc)) [(1,-1),(-2,2)]
--- Right [0,-1]
-compose :: (Show a, Show b, Show c) => BiGUL a b -> BiGUL b c -> BiGUL a c
-compose = Compose
-
--- |
--- The last example in this tutorial is a simple map-map fusion.
--- It makes the composition of two map functions run more efficiently, compared to using 'Compose' combinator.
---
--- In the get direction, (get (f \`Compose\` g)) traverse the list twice, while (get (mapFusion f g)) traverse the list only once.
--- And in the put direction, (put f \`Compose\` g) traverse the two lists up to five times (get counts up once, two put count up four times, since a put takes two lists as argument),
--- while (put mapFusion f g) traverses the lists only twice.
---
--- Compare the following result (in GHCI)
---
--- > t1 :: Int
--- > t1 = last $ fromRight $ put (naiveMap lensSucc `Compose` naiveMap lensSucc) [1..100000] [2..20001]
--- > t2 :: Int
--- > t2 = last $ fromRight $ put (mapFusion lensSucc lensSucc) [1..100000] [2..20001]
--- > fromRight (Right x) = x
---
--- >>> t1
--- 19999
--- (1.24 secs, 512,471,456 bytes)
---
--- >>> t2
--- 19999
--- (0.23 secs, 122,920,792 bytes)
---
--- More examples can be found in the list library of BiGUL.
-mapFusion :: (Show a, Show b, Show c) => BiGUL a b -> BiGUL b c -> BiGUL [a] [c]
-mapFusion f g =
-  Case  [ $(normalSV [p| _:_ |] [p| _:_ |]
-                     [p| _:_ |])
-          ==> $(update [p| x:xs |] [p| x:xs |] [d| x = f `Compose` g; xs = mapFusion f g |])
-        , $(adaptiveSV [p| _:_ |] [p| [] |] ) (\_ _ -> [])
-        , $(normalSV [p| [] |] [p| _:_ |]
-                     [| const False |])
-          ==> (Fail "length of the view should be less than that of the source")
-        , $(normalSV [p| [] |] [p| [] |]
-                     [p| [] |])
-          ==> $(update [p| [] |] [p| [] |] [d| |])
-        ]
-
+-- | A lens which takes a predicate @ p @ and yields a BiGUL program whose get-direction is equivalent to @ filter p @
 filterLens :: (Show a) => (a -> Bool) -> BiGUL [a] [a]
 filterLens f = 
     Case [ -- Case 1: [] []
@@ -227,6 +115,7 @@ expandLens check =
            ==> $(rearrV [| \((view_k, (view_v:view_v2:view_vs)):view_kvs) -> (view_k, [view_v]) : (view_k, view_v2:view_vs) : view_kvs |] ) (expandLens False)
           ]
 
+-- | A lens which tries to align/match the sources with the views, synchronise the matched pairs of sources and views by an inner lens, and process the unmatched sources and views in some programmer-specified ways.
 align :: (Show a, Show b)
       => (a -> Bool)       -- ^ source condition
       -> (a -> b -> Bool)  -- ^ matching condition
@@ -256,12 +145,71 @@ align p match b create conceal = Case
     findFirst p (x:xs) | p x       = Just (x, xs)
     findFirst p (x:xs) | otherwise = fmap (id *** (x:)) (findFirst p xs)
 
-
 groupLens :: BiGUL [(Int,Int)] [(Int ,[Int])]
 groupLens = (align (const True) (\x y -> x == y) (Replace) id (const Nothing)) `Compose` (expandLens True)
 
-sortLens :: BiGUL [(Int,Int)] [(Int ,Int)]
-sortLens = Skip (\x -> sortBy (\x y -> compare (fst x) (fst y)) x)
+-- | A lens whose get-direction is 'sort'. This implementation has an O(n^2) time complexity.
+sortLens :: (Show a, Ord a) => BiGUL [a] [a]
+sortLens = Case 
+    [ $(normalSV [p| [] |] [p| [] |] [p| [] |]) 
+      ==> Skip (const []),
+
+      $(adaptiveSV [p| _ |] [p| [] |])
+      ==> \s v -> [],
+
+      $(normalSV [p| s:ss |] [p| v:vs |] [p| s:ss |])
+      ==> (findMinLens `Compose` $(update [p| s:ss |] [p| s:ss |] [d| s = Replace; ss = sortLens |])),
+
+      $(adaptiveSV [p| [] |] [p| v:vs |])
+      ==> \s v -> v
+    ]
+
+-- | A lens which rearranges the minimum as the first element.
+findMinLens :: (Show a, Ord a) => BiGUL [a] [a]
+findMinLens = findMinRearr `Compose` reassemble
+    where findMinRearr :: (Show a, Ord a) => BiGUL [a] (a, ([a], [a]))
+          findMinRearr = Case
+              [ $(normal [| \(s:ss) (v, ([], vs)) -> s == minimum (s:ss) |]
+                         [| \(s:ss) -> s == minimum (s:ss) |])
+                ==> $(update [p| s:ss |] [p| (s, ([], ss)) |]
+                             [d| s = Replace; ss = Replace |]),
+
+                $(adaptive [| \(s:ss) (_, (p:ps, _)) -> s == minimum (s:ss) |])
+                ==> \s (_, (p:ps, _)) -> (p:s),
+
+                $(adaptive [| \(s:ss) (_, ([], _)) -> True |])
+                ==> \s v -> dropWhile (\k -> k /= minimum s) s,
+
+                $(normal [| \s v -> True |] [| \s -> True |])
+                ==> $(rearrV [| \(v, (p:ps, vs)) -> (p, (v, (ps, vs))) |])
+                    $(update [p| s:ss |] [p| (s, ss) |]
+                             [d| s = Replace; ss = findMinRearr |])
+              ]
+
+          reassemble :: (Show a) => BiGUL (a, ([a], [a])) [a]
+          reassemble = $(update [p| (s, ss) |] [p| s:ss |] [d| s = Replace; ss = appendLens |])
+
+-- | A lens which appends two lists. For the put-direction, it updates each element in the first 
+-- list of the source first and then uses the rest of the view to update the second list.
+appendLens :: (Show a) => BiGUL ([a], [a]) [a]
+appendLens = Case [
+    $(normalSV [p| ([],[]) |] [p| [] |] [p| ([],[]) |])
+    ==> $(rearrV [| \[] -> () |]) (Skip (const ())),
+
+    $(adaptiveSV [p| _ |] [p| [] |])
+    ==> \s v -> ([], []),
+
+    $(normalSV [p| (a:as,b) |] [p| v:vs |] [p| (a:as,b) |])
+    ==> $(rearrS [| \(a:as,b) -> (a, (as,b)) |])
+        $(update [p| (a, rest) |] [p| a:rest |] [d| a = Replace; rest = appendLens |]),
+
+    $(normalSV [p| ([],b:bs) |] [p| v:vs |] [p| ([],b:bs) |])
+    ==> $(rearrS [| \([],b:bs) -> (b, ([],bs)) |])
+        $(update [p| (a, rest) |] [p| a:rest |] [d| a = Replace; rest = appendLens |]),
+
+    $(adaptiveSV [p| ([],[]) |] [p| v:vs |])
+    ==> \s v -> ([], v)
+    ]
 
 filterLens' p = emb (filter p) (filterPut p)
 filterPut p s v = 
