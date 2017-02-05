@@ -1,6 +1,8 @@
 {-# Language TemplateHaskell, TypeFamilies #-}
 
-module BX.Library where
+module BX.Library((==>), emb, mapLens, filterLens, filterLens',
+                  groupLens, sortLens, align, findMinLens, 
+                  appendLens, minEditDistLens) where
 
 import Generics.BiGUL
 import Data.List
@@ -78,42 +80,55 @@ filterLens f =
            (Fail "invalid view")
         ]
 
+-- | Similar to filterLens but implemented by 'emb'. It is faster than 'filterLens'.
+filterLens' p = emb (filter p) (filterPut p)
+    where filterPut p s v = 
+              if null (filter (not . p) v) 
+                 then filterPut' s v
+                 else (error "filterLens: invalid view")
+              where filterPut' s [] = filter (not . p) s
+                    filterPut' [] v = v
+                    filterPut' (s:ss) (v:vs) = if not (p s) then s : (filterPut' ss (v:vs)) else (v : filterPut' ss vs)
 
-expandLens :: (Eq a, Show a, Eq b, Show b) => Bool -> BiGUL [(a,b)] [(a,[b])]
-expandLens check = 
-    Case [ -- Case 1: [] []
-           $(normalSV [p| [] |] [p| [] |] [p| [] |])
-           ==> Skip (const []),
+-- | A lens whose get-direction groups consecutive tuples with the same first component together.
+groupLens :: (Eq a, Show a, Eq b, Show b) => BiGUL [(a,b)] [(a,[b])]
+groupLens = expandLens True
+    where 
+          expandLens :: (Eq a, Show a, Eq b, Show b) => Bool -> BiGUL [(a,b)] [(a,[b])]
+          expandLens check = 
+              Case [ -- Case 1: [] []
+                     $(normalSV [p| [] |] [p| [] |] [p| [] |])
+                     ==> Skip (const []),
 
-           -- Case 2: [] (view_k, view_v:view_vs):view_kvs => adaptive add (view_k,view_v) to src
-           $(adaptive [| \[] ((view_k, view_v:view_vs):view_kvs) -> True |])
-           ==> (\src ((view_k, view_v:view_vs):view_kvs) -> (view_k, view_v) : src) ,
+                     -- Case 2: [] (view_k, view_v:view_vs):view_kvs => adaptive add (view_k,view_v) to src
+                     $(adaptive [| \[] ((view_k, view_v:view_vs):view_kvs) -> True |])
+                     ==> (\src ((view_k, view_v:view_vs):view_kvs) -> (view_k, view_v) : src) ,
 
-           -- Case 3: [] (view_k, []):view_kvs => Fail
-           $(normal [| \[] ((view_k, []):view_kvs) -> True |] [| const False |])
-           ==> Fail "invalid view 2" ,
+                     -- Case 3: [] (view_k, []):view_kvs => Fail
+                     $(normal [| \[] ((view_k, []):view_kvs) -> True |] [| const False |])
+                     ==> Fail "invalid view 2" ,
 
-           -- Case 4: (src_k, src_v):src_kvs [] => adaptive drop all
-           $(adaptive [| \((src_k,src_v):src_kvs) [] -> True |])
-           ==> (\src view -> []),
+                     -- Case 4: (src_k, src_v):src_kvs [] => adaptive drop all
+                     $(adaptive [| \((src_k,src_v):src_kvs) [] -> True |])
+                     ==> (\src view -> []),
 
-           -- Case 5: (src_k, src_v):src_kvs (view_k, []):view_kvs => Fail
-           $(normal [| \((src_k,src_v):src_kvs) ((view_k, []):view_kvs) -> True |] [| const False |])
-           ==> Fail "invalid view 1" ,
+                     -- Case 5: (src_k, src_v):src_kvs (view_k, []):view_kvs => Fail
+                     $(normal [| \((src_k,src_v):src_kvs) ((view_k, []):view_kvs) -> True |] [| const False |])
+                     ==> Fail "invalid view 1" ,
 
-           -- Case 6 & 7: (src_k, src_v):src_kvs (view_k, view_v:[]):view_kvs 
-           --           => If src_v != view_v, then add view_v to src else replace and recursion
-           $(adaptive [| \((src_k,src_v):src_kvs) ((view_k, view_v:[]):view_kvs) -> src_k /= view_k || src_v /= view_v |])
-           ==> (\src ((view_k, view_v:[]):view_kvs) -> (view_k, view_v) : src) ,
+                     -- Case 6 & 7: (src_k, src_v):src_kvs (view_k, view_v:[]):view_kvs 
+                     --           => If src_v != view_v, then add view_v to src else replace and recursion
+                     $(adaptive [| \((src_k,src_v):src_kvs) ((view_k, view_v:[]):view_kvs) -> src_k /= view_k || src_v /= view_v |])
+                     ==> (\src ((view_k, view_v:[]):view_kvs) -> (view_k, view_v) : src) ,
 
-           $(normal [| \((src_k,src_v):src_kvs) ((view_k, view_v:[]):view_kvs) -> src_k == view_k || src_v == view_v |]
-                    [| \src -> not check || (length src == 1 || (fst (head src) /= fst (head (tail src))))|])
-           ==> $(update [p| (kv:kvs) |] [p| (kv:kvs) |] [d| kv = (Skip (\(k,v) -> (k, [v]))) ; kvs = (expandLens True) |]) ,
+                     $(normal [| \((src_k,src_v):src_kvs) ((view_k, view_v:[]):view_kvs) -> src_k == view_k || src_v == view_v |]
+                              [| \src -> not check || (length src == 1 || (fst (head src) /= fst (head (tail src))))|])
+                     ==> $(update [p| (kv:kvs) |] [p| (kv:kvs) |] [d| kv = (Skip (\(k,v) -> (k, [v]))) ; kvs = (expandLens True) |]) ,
 
-           -- Case 8: (src_k, src_v):src_kvs (view_k, view_v:view_v2:view_vs):view_kvs => rearrV
-           $(normal [| \((_,_):_) ((_,(_:_:_)):_) -> True |] [| \((k1,_):(k2,_):kvs) -> k1 == k2 |])
-           ==> $(rearrV [| \((view_k, (view_v:view_v2:view_vs)):view_kvs) -> (view_k, [view_v]) : (view_k, view_v2:view_vs) : view_kvs |] ) (expandLens False)
-          ]
+                     -- Case 8: (src_k, src_v):src_kvs (view_k, view_v:view_v2:view_vs):view_kvs => rearrV
+                     $(normal [| \((_,_):_) ((_,(_:_:_)):_) -> True |] [| \((k1,_):(k2,_):kvs) -> k1 == k2 |])
+                     ==> $(rearrV [| \((view_k, (view_v:view_v2:view_vs)):view_kvs) -> (view_k, [view_v]) : (view_k, view_v2:view_vs) : view_kvs |] ) (expandLens False)
+                    ]
 
 -- | A lens which tries to align/match the sources with the views, synchronise the matched pairs of sources and views by an inner lens, and process the unmatched sources and views in some programmer-specified ways.
 align :: (Show a, Show b)
@@ -124,29 +139,26 @@ align :: (Show a, Show b)
       -> (a -> Maybe a)    -- ^ concealment
       -> BiGUL [a] [b]
 align p match b create conceal = Case
-  [ $(normal [| \s [] -> (null . filter p) s |] [| \s -> (null . filter p) s |])
-    ==> $(rearrV [| \[] -> () |])
-         (Skip (const ()))
-  , $(adaptiveSV [p| _ |] [p| [] |])
-    ==> \ss _ -> catMaybes (map (\s -> if p s then conceal s else Just s) ss)
-  -- view is necessarily nonempty in the cases below
-  , $(normal [| \(s:_) _ -> not (p s) |] [| \(s:ss) -> (not (p s)) && not ((null . filter p) ss)|])
-    ==> $(rearrS [| \(s:ss) -> ss |])
-         (align p match b create conceal)
-  , $(normal [| \(s:ss) (v:vs) -> p s && match s v |] [| \(s:_) -> p s |])
-    ==> $(update [p| x:xs |] [p| x:xs |] [d| x = b; xs = align p match b create conceal |])
-  , $(adaptive [| \ss (v:_) -> isJust (findFirst (\s -> p s && match s v) ss) ||
-                               let s = create v in p s && match s v |])
-    ==> \ss (v:_) -> maybe (create v:ss) (uncurry (:)) (findFirst (\s -> p s && match s v) ss)
-  ]
-  where
-    findFirst :: (a -> Bool) -> [a] -> Maybe (a, [a])
-    findFirst p [] = Nothing
-    findFirst p (x:xs) | p x       = Just (x, xs)
-    findFirst p (x:xs) | otherwise = fmap (id *** (x:)) (findFirst p xs)
-
-groupLens :: BiGUL [(Int,Int)] [(Int ,[Int])]
-groupLens = (align (const True) (\x y -> x == y) (Replace) id (const Nothing)) `Compose` (expandLens True)
+    [ $(normal [| \s [] -> (null . filter p) s |] [| \s -> (null . filter p) s |])
+      ==> $(rearrV [| \[] -> () |])
+           (Skip (const ()))
+    , $(adaptiveSV [p| _ |] [p| [] |])
+      ==> \ss _ -> catMaybes (map (\s -> if p s then conceal s else Just s) ss)
+    -- view is necessarily nonempty in the cases below
+    , $(normal [| \(s:_) _ -> not (p s) |] [| \(s:ss) -> (not (p s)) && not ((null . filter p) ss)|])
+      ==> $(rearrS [| \(s:ss) -> ss |])
+           (align p match b create conceal)
+    , $(normal [| \(s:ss) (v:vs) -> p s && match s v |] [| \(s:_) -> p s |])
+      ==> $(update [p| x:xs |] [p| x:xs |] [d| x = b; xs = align p match b create conceal |])
+    , $(adaptive [| \ss (v:_) -> isJust (findFirst (\s -> p s && match s v) ss) ||
+                                 let s = create v in p s && match s v |])
+      ==> \ss (v:_) -> maybe (create v:ss) (uncurry (:)) (findFirst (\s -> p s && match s v) ss)
+    ]
+    where
+        findFirst :: (a -> Bool) -> [a] -> Maybe (a, [a])
+        findFirst p [] = Nothing
+        findFirst p (x:xs) | p x       = Just (x, xs)
+        findFirst p (x:xs) | otherwise = fmap (id *** (x:)) (findFirst p xs)
 
 -- | A lens whose get-direction is 'sort'. This implementation has an O(n^2) time complexity.
 sortLens :: (Show a, Ord a) => BiGUL [a] [a]
@@ -211,60 +223,69 @@ appendLens = Case [
     ==> \s v -> ([], v)
     ]
 
-filterLens' p = emb (filter p) (filterPut p)
-filterPut p s v = 
-    if null (filter (not . p) v) 
-       then filterPut' s v
-       else (error "filterLens: invalid view")
-    where filterPut' s [] = filter (not . p) s
-          filterPut' [] v = v
-          filterPut' (s:ss) (v:vs) = if not (p s) then s : (filterPut' ss (v:vs)) else (v : filterPut' ss vs)
-
-bx1 :: BiGUL (Int, String) Int
-bx1 = $(update [p| (x, _) |] [p| x |] [d| x = Replace |])
-
 minEditDistLens :: (Show s, Show v, Eq s, Eq v) => BiGUL s v -> (v -> s) -> BiGUL [s] [v]
 minEditDistLens bx create = Case
     -- 'bx' tries to update from view to source by simply replacing elements in source and view one by one,
     -- If it is not the most efficient way, we try to add elements or delete elements.
-    [ $(adaptive [| \ s v -> length s /= length v || structureEdit bx create s v /= s |])
+    [ $(adaptive [| \ s v -> structureEdit bx create s v /= s |])
       ==> structureEdit bx create
     ,
      $(normalSV [p| _ |] [p| _ |] [p| _ |])
       ==> mapLens bx create
     ]
 
-data Operation = OpModify | OpInsert | OpDelete | OpNothing deriving (Show, Eq, Ord)
+data Operation = OpModify | OpInsert | OpDelete | OpNothing | OpSwap deriving (Show, Eq, Ord)
+
+-- Swap operation is restricted to:
+-- (1) swap ADJACENT elements.
+-- (2) and also that NO characters can be inserted/deleted between two swapped elements after/before swapping
+--
+-- Lowrance1975 [An Extension of the String-to-String Correction Problem] showed a way to drop restriction (2) with a O(N^3)
+-- algorithm. It's not implemented here for performance consideration.
 
 minEditDistDP :: (Eq a) => [a] -> [a] -> Array (Int, Int) (Int, Operation)
 minEditDistDP s v = runST $ do
     let (lenS, lenV) = (length s, length v)
+    let largeNum = lenS + lenV + 1
     arrS <- newSTListArray (1, lenS) s
     arrV <- newSTListArray (1, lenV) v
     f <- newArray ((0,0), (lenS, lenV)) (-1, OpInsert) :: ST s (STArray s (Int, Int) (Int, Operation))
+
     forM_ [0 .. lenV] (\i -> writeArray f (0, i) (i, OpInsert))
+
     forM_ [0 .. lenS] (\i -> writeArray f (i, 0) (i, OpDelete))
+
     writeArray f (0,0) (0, OpNothing)
+
     forM_ (range ((1,1), (lenS, lenV))) (\(i, j) -> do
         si <- readArray arrS i
         sj <- readArray arrV j
-        if si == sj 
+        if si == sj
            then readArray f (i-1, j-1) >>= \p -> writeArray f (i, j) (modifySnd OpNothing p)
            else do
                cModify <- readArray f (i-1, j-1)
                cInsert <- readArray f (i, j-1)
                cDelete <- readArray f (i-1, j)
-               writeArray f (i, j) ((\(x, y) -> (x+1, y)) (minimum [ modifySnd OpModify cModify,
-                                                                     modifySnd OpInsert cInsert,
-                                                                     modifySnd OpDelete cDelete ]) ))
+               let cost = ((\(x, y) -> (x+1, y)) (minimum [ modifySnd OpModify cModify,
+                                                            modifySnd OpInsert cInsert,
+                                                            modifySnd OpDelete cDelete ]) )
+               writeArray f (i, j) cost
+
+               when (i > 1 && j > 1) $ do
+                 si_1 <- readArray arrS (i-1)
+                 sj_1 <- readArray arrV (j-1)
+                 cSwap <- fmap (\(x,y) -> (x+1, OpSwap)) $ readArray f (i-2, j-2)
+                 when (si_1 == sj && sj_1 == si && cSwap < cost) $ writeArray f (i, j) cSwap
+        )
     freeze f
+
     where newSTListArray :: (Ix i) => (i,i) -> [a] -> ST s (STArray s i a)
           newSTListArray = newListArray
           modifySnd x (a, b) = (a, x)
 
 structureEdit :: (Show s, Show v, Eq s, Eq v) => BiGUL s v -> (v -> s) -> [s] -> [v] -> [s]
 structureEdit bx create s v = let sv = get (mapLens bx create) s
-                              in if sv == Nothing 
+                              in if sv == Nothing
                                     then s
                                     else let f = minEditDistDP (fromJust sv) v
                                              reconstruct 0 0 [] = []
@@ -273,6 +294,7 @@ structureEdit bx create s v = let sv = get (mapLens bx create) s
                                                  OpModify -> head s : reconstruct (i-1) (j-1) (tail s)
                                                  OpInsert -> create (head v) : reconstruct i (j-1) s
                                                  -- FIXME: the following maybe more safe
-                                                 -- OpInsert -> fromJust (put bx (create v) v) : reconstruct i (j-1) s
+                                                 -- OpInsert -> fromJust (put bx (create (head v)) (head v)) : reconstruct i (j-1) s
                                                  OpDelete -> reconstruct (i-1) j (tail s)
+                                                 OpSwap -> head (tail s) : head s : reconstruct (i-2) (j-2) (tail (tail s))
                                          in reverse $ reconstruct (length s) (length v) (reverse s)
