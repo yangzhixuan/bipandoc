@@ -60,7 +60,7 @@ The following variables can be configured in your `.vimrc`:
 | g:bipandoc_html_body_only_mode | If 1, the html file only contains contents inside the body tag. Otherwise, the html file must have an html root tag. |
 
 The following gif demonstrates a running:
-![demo gif]("BiPandocDemo.gif")
+![demo gif](./BiPandocDemo.gif)
 
 
 
