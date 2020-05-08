@@ -49,7 +49,7 @@ See `bipandoc --help` for more options.
 Vim binding
 ----------
 The `bipandoc.vim` subdirectory is a useful vim interface for BiPandoc.
-After installing it with your favourite vim plugin manager like [vim-plug](https://github.com/junegunn/vim-plug) and [vim-pathogen](https://github.com/tpope/vim-pathogen), call `:BiPandocBindThisHTML` and `:BiPandocBindThisMD` at the appropriate vim window/buffer/tab to let the BiPandoc plugin associate two markdown/html files. 
+After installing it with your favourite vim plugin manager (like [vim-plug](https://github.com/junegunn/vim-plug) and [vim-pathogen](https://github.com/tpope/vim-pathogen)), call `:BiPandocBindThisHTML` and `:BiPandocBindThisMD` at the appropriate vim window/buffer/tab to let the BiPandoc plugin associate two markdown/html files. 
 Then call `:BiPandocStartSync` and after this whenever you save one of the files, the change will be propagated to the other file through `bipandoc`.
 
 The following variables can be configured in your `.vimrc`:
@@ -58,5 +58,9 @@ The following variables can be configured in your `.vimrc`:
 | g:bipandoc_path | The path to the bipandoc executable if it cannot be found by default |
 | g:bipandoc_log  |  If this is non-empty, the output of bipandoc is written to this path |
 | g:bipandoc_html_body_only_mode | If 1, the html file only contains contents inside the body tag. Otherwise, the html file must have an html root tag. |
+
+The following gif demonstrates a running:
+![demo gif]("BiPandocDemo.gif")
+
 
 
